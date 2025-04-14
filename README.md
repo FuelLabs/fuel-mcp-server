@@ -1,6 +1,8 @@
-# Bun ChromaDB Markdown Indexer
+# Fuel Network & Sway Language MCP Server
 
-This project demonstrates indexing markdown documents into ChromaDB using Bun, Typescript, and open-source embeddings (via Transformers.js).
+This project provides a Multi-Component Protocol (MCP) server specifically designed for the Fuel Network and Sway Language ecosystem. It allows IDEs (like VS Code with the appropriate extension) to connect and seamlessly interact with Fuel documentation, enabling easier searching, understanding, and development within Fuel projects.
+
+This server indexes Fuel and Sway documentation (including markdown files and potentially other formats in the future) into a vector database (currently ChromaDB) using open-source embeddings (via Transformers.js). This allows for powerful semantic search capabilities directly within the development environment.
 
 ## Project Structure
 
@@ -98,6 +100,37 @@ bun install
     ```bash
     CHROMA_COLLECTION=my_custom_docs NUM_RESULTS=3 bun run src/query.ts --run "My query text"
     ```
+
+## MCP Server (for IDE Integration)
+
+This project includes an MCP (Model Context Protocol) server (`src/mcp-server.ts`) that exposes the Fuel documentation search functionality as a tool. This allows compatible clients, like Cursor, to connect and use the search capabilities directly within the IDE.
+
+### Running the MCP Server
+
+Ensure ChromaDB is running and you have indexed your documents (see steps above).
+
+To start the MCP server, run the following command:
+
+```bash
+bun run mcp-server
+```
+
+The server will connect via standard input/output (stdio) and wait for a client to connect.
+
+### Connecting with Cursor
+
+1.  **Open Cursor.**
+2.  **Open the Command Palette** (Cmd+Shift+P on macOS, Ctrl+Shift+P on Windows/Linux).
+3.  **Search for and select "MCP: Add MCP Server via Command".**
+4.  **Enter the command** to run the server. Since the server uses `bun run`, and Cursor needs the full path to `bun`, you'll typically need to find `bun`'s path first. You can usually find this by running `which bun` in your terminal.
+    *   Example command (replace `/path/to/your/bun` with the actual path from `which bun`, and `/path/to/fuel-mcp-server` with the actual path to this project's root directory):
+        ```bash
+        /path/to/your/bun run /path/to/fuel-mcp-server/src/mcp-server.ts
+        ```
+    *   **Important:** Ensure you provide the **full, absolute path** to both `bun` and the `src/mcp-server.ts` script.
+5.  **Give the server a name** (e.g., "Fuel Docs Search") when prompted.
+
+Once connected, you should be able to use the `searchFuelDocs` tool via Cursor's chat or code actions (depending on how Cursor integrates MCP tools).
 
 ## Implementation Details
 
