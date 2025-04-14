@@ -107,34 +107,35 @@ export async function queryDocs(
 
 // Example of running the script directly
 async function run() {
-    if (import.meta.main) {
-        const query = process.argv[2];
-        if (!query) {
-            console.error("Please provide a query string as a command-line argument.");
-            console.error("Example: bun src/query.ts \"How to install Bun?\"");
-            process.exit(1);
-        }
+    const query = process.argv.find((arg, i) => i > 1 && !arg.startsWith('--')); // Find first non-flag arg after script name
+    if (!query) {
+        console.error("Please provide a query string as a command-line argument.");
+        console.error("Example: bun src/query.ts --run \"How to install Bun?\"");
+        process.exit(1);
+    }
 
-        const collectionName = process.env.CHROMA_COLLECTION || DEFAULT_COLLECTION;
-        const model = process.env.EMBEDDING_MODEL || DEFAULT_MODEL;
-        const numResults = process.env.NUM_RESULTS ? parseInt(process.env.NUM_RESULTS, 10) : 5;
+    const collectionName = process.env.CHROMA_COLLECTION || DEFAULT_COLLECTION;
+    const model = process.env.EMBEDDING_MODEL || DEFAULT_MODEL;
+    const numResults = process.env.NUM_RESULTS ? parseInt(process.env.NUM_RESULTS, 10) : 5;
 
-        if (isNaN(numResults) || numResults <= 0) {
-            console.error(`Invalid NUM_RESULTS environment variable: ${process.env.NUM_RESULTS}. Using default 5.`);
-            process.exit(1);
-        }
+    if (isNaN(numResults) || numResults <= 0) {
+        console.error(`Invalid NUM_RESULTS environment variable: ${process.env.NUM_RESULTS}. Using default 5.`);
+        // Keep the default, don't exit process.exit(1);
+    }
 
-        try {
-            const queryResults = await queryDocs(query, collectionName, model, numResults);
-            console.log("\n--- Query Results --- ");
-            // Pretty print the results (can be customized)
-            console.log(JSON.stringify(queryResults, null, 2));
-             console.log("\n-------------------");
-        } catch (error) {
-            console.error("\n--- Query failed --- ", error);
-            process.exit(1);
-        }
+    try {
+        const queryResults = await queryDocs(query, collectionName, model, numResults);
+        console.log("\n--- Query Results --- ");
+        // Pretty print the results (can be customized)
+        console.log(JSON.stringify(queryResults, null, 2));
+         console.log("\n-------------------");
+    } catch (error) {
+        console.error("\n--- Query failed --- ", error);
+        process.exit(1);
     }
 }
 
-run(); 
+// Only run if --run flag is present
+if (process.argv.includes('--run')) {
+    run();
+} 

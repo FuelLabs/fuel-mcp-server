@@ -102,13 +102,13 @@ export async function indexDocs(
     // Process files: Read, Chunk
     for (const file of markdownFiles) {
         const filePath = path.join(docsDir, file);
-        console.log(`Processing file: ${file}...`);
+        // console.log(`Processing file: ${file}...`);
         try {
             const content = await fsPromises.readFile(filePath, "utf-8");
             const chunks = chunkMarkdown(content, targetChunkSize, estimateTokens);
 
             if(chunks.length > 0) {
-                console.log(`  - Chunked into ${chunks.length} segments.`);
+                //console.log(`  - Chunked into ${chunks.length} segments.`);
                 allChunks.push(...chunks.map((chunk, index) => ({
                     id: `${file}-${index}`, // Simple ID based on filename and chunk index
                     chunk,

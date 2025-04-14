@@ -27,8 +27,21 @@ This project demonstrates indexing markdown documents into ChromaDB using Bun, T
 *   **ChromaDB:** A running instance is required. The easiest way is using Docker:
     ```bash
     docker pull chromadb/chroma
-    docker run -p 8000:8000 chromadb/chroma
+    # Run ChromaDB (non-persistent, data lost on container stop)
+    # docker run -p 8000:8000 chromadb/chroma
+
+    # To make data persistent, use a volume mount:
+    
+    # Option 1: Bind Mount (Maps to a specific host directory)
+    # Creates a directory named "chroma_data" in your current working directory on the host
+    docker run -p 8000:8000 -v "$(pwd)/chroma_data":/data chromadb/chroma
+    
+    # Option 2: Named Volume (Alternative)
+    # Creates a docker-managed volume named "chroma_data"
+    # docker run -p 8000:8000 -v chroma_data:/data chromadb/chroma
     ```
+    The bind mount option (`-v "$(pwd)/chroma_data":/data`) is shown by default. It tells Docker to store the database data (located inside the container at `/data`) into a `chroma_data` directory within your current host working directory.
+
     The scripts assume ChromaDB is accessible at `http://localhost:8000`.
 
 ## Installation
@@ -66,13 +79,14 @@ bun install
     ```
 
 4.  **Query Documents:** Run the query script with your question as a command-line argument.
+    You **must** include the `--run` flag before your query.
 
     ```bash
-    bun run src/query.ts "What is Bun?"
+    bun run src/query.ts --run "What is Bun?"
     ```
 
     ```bash
-    bun run src/query.ts "How do I add documents to Chroma?"
+    bun run src/query.ts --run "How do I add documents to Chroma?"
     ```
 
     *Optional Environment Variables for Query:*
@@ -82,11 +96,9 @@ bun install
 
     *Example with custom collection and number of results:*
     ```bash
-    CHROMA_COLLECTION=my_custom_docs NUM_RESULTS=3 bun run src/query.ts "My query text"
+    CHROMA_COLLECTION=my_custom_docs NUM_RESULTS=3 bun run src/query.ts --run "My query text"
     ```
 
 ## Implementation Details
 
-*   **Chunking (`src/chunker.ts`):** Splits markdown by code blocks (` ``` `) first. Text sections are then further split by paragraphs (`\n\n`) aiming for the `TARGET_TOKEN_SIZE`, but individual code blocks or paragraphs larger than the target size are kept intact.
-*   **Embeddings (`src/indexer.ts`, `src/query.ts`):** Uses the `@xenova/transformers` library to download and run the specified Sentence Transformer model locally for generating embeddings.
-*   **Vector Store (`src/indexer.ts`, `src/query.ts`):** Uses the `chromadb` JavaScript client to interact with a running ChromaDB instance.
+*   **Chunking (`src/chunker.ts`):** Splits markdown by code blocks (` ``` `) first. Text sections are then further split by paragraphs (`\n\n`) aiming for the `
