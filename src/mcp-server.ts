@@ -27,6 +27,9 @@ server.tool(
   async ({ query, collectionName, modelName, nResults }) => {
     log(`MCP Tool 'searchFuelDocs' called with query: "${query}"`);
     
+    // Ensure Qdrant is running *before* executing the query logic
+    await ensureQdrantIsRunning(); 
+
     const executeQuery = async () => {
       return await queryDocs(
         query,
@@ -131,6 +134,7 @@ async function startServer() {
   }
 }
 
+// Start the server directly
 startServer();
 
 // Function to check if a port is in use
@@ -187,9 +191,4 @@ async function ensureQdrantIsRunning() {
     // Decide if you want to exit the process or continue without Qdrant
     // process.exit(1);
   }
-}
-
-// Ensure Qdrant is running before starting the server
-ensureQdrantIsRunning().then(() => {
-  startServer();
-}); 
+} 
