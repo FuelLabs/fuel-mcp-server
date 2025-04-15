@@ -4,6 +4,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { queryDocs } from "./query"; // Adjust path if necessary
 import { env } from '@xenova/transformers';
+import { spawn } from 'child_process';
+import net from 'net';
 
 // Disable local cache for transformers.js models, needed by queryDocs dependencies
 env.cacheDir = '';
@@ -79,4 +81,65 @@ async function startServer() {
   }
 }
 
-startServer(); 
+startServer();
+
+// Function to check if a port is in use
+function isPortInUse(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        resolve(true); // Port is already in use
+      } else {
+        // Ignore other errors (like permission errors)
+        resolve(false);
+      }
+    });
+    server.once('listening', () => {
+      server.close(() => {
+        resolve(false); // Port is free
+      });
+    });
+    server.listen(port);
+  });
+}
+
+// Function to ensure Qdrant is running
+async function ensureQdrantIsRunning() {
+  const qdrantPort = 6333;
+  const isRunning = await isPortInUse(qdrantPort);
+
+  if (isRunning) {
+    console.log(`Port ${qdrantPort} is already in use. Assuming Qdrant is running.`);
+    return;
+  }
+
+  console.log('Qdrant not detected, attempting to start via Docker...');
+  const dockerCommand = 'docker';
+  const dockerArgs = [
+    'run',
+    '-p',
+    `${qdrantPort}:${qdrantPort}`,
+    '-v',
+    `${process.cwd()}/qdrant_storage:/qdrant/storage`,
+    'qdrant/qdrant'
+  ];
+
+  try {
+    const qdrantProcess = spawn(dockerCommand, dockerArgs, {
+      detached: true, // Run in background
+      stdio: 'ignore'   // Detach stdio
+    });
+    qdrantProcess.unref(); // Allow parent process to exit independently
+    console.log('Qdrant Docker container started in the background.');
+  } catch (error) {
+    console.error('Failed to start Qdrant Docker container:', error);
+    // Decide if you want to exit the process or continue without Qdrant
+    // process.exit(1);
+  }
+}
+
+// Ensure Qdrant is running before starting the server
+ensureQdrantIsRunning().then(() => {
+  startServer();
+}); 
