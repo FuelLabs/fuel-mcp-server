@@ -26,14 +26,19 @@ server.tool(
   },
   async ({ query, collectionName, modelName, nResults }) => {
     console.log(`MCP Tool 'searchFuelDocs' called with query: "${query}"`);
-    try {
-      // Call the existing query function
-      const results = await queryDocs(
+    
+    const executeQuery = async () => {
+      return await queryDocs(
         query,
         collectionName, // Will use default if undefined
         modelName,      // Will use default if undefined
         nResults        // Will use default if undefined
       );
+    };
+
+    try {
+      // First attempt
+      const results = await executeQuery();
 
       // Format results for MCP response
       // Assuming results is an array of Qdrant point objects like:
@@ -44,26 +49,71 @@ server.tool(
             const score = hit.score;
             const content = payload.content || 'No content found'; // Adjust 'content' key if needed based on indexing
             const source = payload.source || 'unknown'; // Adjust 'source' key if needed
-            return `Source: ${source}\nScore: ${score?.toFixed(4)}\nContent:\n${content}\n---`;
-          }).join('\n\n')
+            return `Source: ${source}\\nScore: ${score?.toFixed(4)}\\nContent:\\n${content}\\n---`;
+          }).join('\\n\\n')
         : JSON.stringify(results, null, 2); // Fallback if format is unexpected
 
       return {
         content: [{
           type: "text",
-          text: `Search Results for "${query}":\n\n${formattedResults}`
+          text: `Search Results for "${query}":\\n\\n${formattedResults}`
         }]
       };
     } catch (err: unknown) {
       const error = err as Error;
-      console.error(`Error in searchFuelDocs tool: ${error.message}`);
-      return {
-        content: [{
-          type: "text",
-          text: `Error executing search: ${error.message}`
-        }],
-        isError: true // Indicate that an error occurred
-      };
+      console.error(`Initial error in searchFuelDocs tool: ${error.message}`);
+
+      // Check if it's a connection error and attempt restart/retry
+      if (error.message.includes("Unable to connect")) {
+        console.log("Qdrant connection error detected. Attempting to ensure Qdrant is running...");
+        try {
+          await ensureQdrantIsRunning();
+          // Wait a bit for Qdrant to potentially start up
+          console.log("Waiting 5 seconds for Qdrant to initialize...");
+          await new Promise(resolve => setTimeout(resolve, 5000)); 
+          
+          console.log("Retrying queryDocs call...");
+          const results = await executeQuery(); // Retry the query
+
+          // Format results again after successful retry
+           const formattedResults = Array.isArray(results)
+            ? results.map((hit: any) => {
+                const payload = hit.payload || {};
+                const score = hit.score;
+                const content = payload.content || 'No content found'; 
+                const source = payload.source || 'unknown';
+                return `Source: ${source}\\nScore: ${score?.toFixed(4)}\\nContent:\\n${content}\\n---`;
+              }).join('\\n\\n')
+            : JSON.stringify(results, null, 2);
+
+          return {
+            content: [{
+              type: "text",
+              text: `Search Results for "${query}" (after retry):\\n\\n${formattedResults}`
+            }]
+          };
+        } catch (retryErr: unknown) {
+          const retryError = retryErr as Error;
+          console.error(`Error in searchFuelDocs tool after retry: ${retryError.message}`);
+          // If retry fails, return the retry error message
+          return {
+            content: [{
+              type: "text",
+              text: `Error executing search after retry: ${retryError.message}`
+            }],
+            isError: true // Indicate that an error occurred
+          };
+        }
+      } else {
+        // If it wasn't a connection error, return the original error message
+         return {
+          content: [{
+            type: "text",
+            text: `Error executing search: ${error.message}`
+          }],
+          isError: true // Indicate that an error occurred
+        };
+      }
     }
   }
 );
