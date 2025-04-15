@@ -2,15 +2,21 @@
   "name": "fuel-mcp-server",
   "module": "src/mcp-server.ts",
   "type": "module",
-  "private": true,
+  "main": "./dist/mcp-server.js",
+  "bin": {
+    "fuel-mcp-server": "./dist/mcp-server.js"
+  },
   "scripts": {
-    "mcp-server": "bun run src/mcp-server.ts",
+    "build": "tsc && mkdir -p bin/napi-v3/darwin/arm64 && cp node_modules/onnxruntime-node/bin/napi-v3/darwin/arm64/* bin/napi-v3/darwin/arm64/ && mkdir -p build/Release && cp node_modules/sharp/build/Release/sharp-darwin-arm64v8.node build/Release/ && cp -r node_modules/sharp/vendor ./vendor",
+    "mcp-server": "bun run dist/mcp-server.js",
     "index": "bun run src/indexer.ts",
-    "test": "bun test && bun run vitest run"
+    "test": "bun test && bun run vitest run",
+    "prepublishOnly": "bun run build"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "vitest": "^3.1.1"
+    "vitest": "^3.1.1",
+    "typescript": "^5"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -21,6 +27,7 @@
     "@types/markdown-it": "^14.1.2",
     "@xenova/transformers": "^2.17.2",
     "markdown-it": "^14.1.0",
+    "onnxruntime-node": "^1.18.0",
     "zod": "^3.23.8"
   }
 }
