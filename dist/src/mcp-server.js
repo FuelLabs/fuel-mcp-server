@@ -20,6 +20,8 @@ server.tool("searchFuelDocs", {
     nResults: z.number().int().positive().optional().describe("Optional: Specify the number of search results (default 5).")
 }, async ({ query, collectionName, modelName, nResults }) => {
     log(`MCP Tool 'searchFuelDocs' called with query: "${query}"`);
+    // Ensure Qdrant is running *before* executing the query logic
+    await ensureQdrantIsRunning();
     const executeQuery = async () => {
         return await queryDocs(query, collectionName, // Will use default if undefined
         modelName, // Will use default if undefined
@@ -116,6 +118,7 @@ async function startServer() {
         process.exit(1);
     }
 }
+// Start the server directly
 startServer();
 // Function to check if a port is in use
 function isPortInUse(port) {
@@ -170,7 +173,3 @@ async function ensureQdrantIsRunning() {
         // process.exit(1);
     }
 }
-// Ensure Qdrant is running before starting the server
-ensureQdrantIsRunning().then(() => {
-    startServer();
-});
