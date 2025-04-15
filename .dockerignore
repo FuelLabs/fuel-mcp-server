@@ -1,0 +1,9 @@
+.git
+.gitignore
+node_modules
+npm-debug.log
+qdrant_storage
+.DS_Store
+*.env
+Dockerfile
+docker-compose.yml 

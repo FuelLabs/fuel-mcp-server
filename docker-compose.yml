@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant-db
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      # Add QDRANT_API_KEY here if needed for Qdrant Cloud or secured setups
+      # QDRANT_API_KEY: ${QDRANT_API_KEY} 
+
+  mcp-server:
+    build: .
+    container_name: mcp-server-app
+    depends_on:
+      - qdrant
+    environment:
+      # Point MCP server to the Qdrant container
+      QDRANT_URL: http://qdrant:6333 
+      # Pass other required environment variables if needed
+      # EMBEDDING_MODEL: ${EMBEDDING_MODEL} # Example
+      # QDRANT_COLLECTION: ${QDRANT_COLLECTION} # Example
+    # Keep stdin open for stdio transport
+    stdin_open: true 
+    # Allocate a pseudo-TTY for interaction if needed
+    tty: true 
+    restart: unless-stopped 
