@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { queryDocs } from "./query.js"; // Adjust path if necessary
+import { queryDocs } from "./query"; // Adjust path if necessary
 import { env } from '@xenova/transformers';
 
 // Disable local cache for transformers.js models, needed by queryDocs dependencies
@@ -16,7 +16,7 @@ const server = new McpServer({
 server.tool(
   "searchFuelDocs",
   {
-    query: z.string().describe("The search query for Fuel documentation."),
+    query: z.string().describe("The search query for Fuel and Sway documentation."),
     collectionName: z.string().optional().describe("Optional: Specify the ChromaDB collection name."),
     modelName: z.string().optional().describe("Optional: Specify the embedding model name."),
     nResults: z.number().int().positive().optional().describe("Optional: Specify the number of search results (default 5).")
@@ -33,14 +33,17 @@ server.tool(
       );
 
       // Format results for MCP response
-      // Assuming results contain 'documents', 'metadatas', 'distances' arrays
-      const formattedResults = results?.documents?.[0]?.map((doc: string, index: number) => {
-        const metadata = results.metadatas?.[0]?.[index] || {};
-        const distance = results.distances?.[0]?.[index];
-        const source = metadata.source || 'unknown'; // Extract source from metadata if available
-        return `Source: ${source}\nDistance: ${distance?.toFixed(4)}\nContent:\n${doc}\n---`;
-      }).join('\n\n') || JSON.stringify(results, null, 2); // Fallback to JSON if format is unexpected
-
+      // Assuming results is an array of Qdrant point objects like:
+      // [{ id: '...', score: 0.9, payload: { content: '...', source: '...' } }, ...]
+      const formattedResults = Array.isArray(results)
+        ? results.map((hit: any) => {
+            const payload = hit.payload || {};
+            const score = hit.score;
+            const content = payload.content || 'No content found'; // Adjust 'content' key if needed based on indexing
+            const source = payload.source || 'unknown'; // Adjust 'source' key if needed
+            return `Source: ${source}\nScore: ${score?.toFixed(4)}\nContent:\n${content}\n---`;
+          }).join('\n\n')
+        : JSON.stringify(results, null, 2); // Fallback if format is unexpected
 
       return {
         content: [{

@@ -1,63 +1,83 @@
-import { ChromaClient, type Collection } from 'chromadb';
-import { pipeline, env, type Pipeline } from '@xenova/transformers';
+import { QdrantClient } from '@qdrant/js-client-rest';
+import { pipeline, env, type Pipeline, type FeatureExtractionPipeline } from '@xenova/transformers';
 
 // Disable local cache for transformers.js models
 env.cacheDir = ''
 
-// Constants - Should match the ones used in indexer.ts
+// Constants - Should match the ones used in indexer-qdrant.ts
 const DEFAULT_MODEL = "Xenova/all-MiniLM-L6-v2";
-const DEFAULT_COLLECTION = "bun_chroma_docs";
+// Ensure this matches the collection name used during indexing with Qdrant
+const DEFAULT_COLLECTION = process.env.QDRANT_COLLECTION || "bun_qdrant_docs"; 
+const DEFAULT_QDRANT_URL = process.env.QDRANT_URL || "http://localhost:6333";
 
 /**
- * Queries the ChromaDB collection with a given prompt.
+ * Queries the Qdrant collection with a given prompt.
  */
 export async function queryDocs(
     queryText: string,
     collectionName: string = DEFAULT_COLLECTION,
     modelName: string = DEFAULT_MODEL,
-    nResults: number = 5 // Number of results to retrieve
-): Promise<any> { // Return type can be refined based on ChromaDB result structure
+    nResults: number = 5, // Number of results to retrieve
+    qdrantUrl: string = DEFAULT_QDRANT_URL,
+    qdrantApiKey?: string // Optional API key for Qdrant Cloud
+): Promise<any> { // Return type can be refined based on Qdrant result structure
     if (!queryText) {
         throw new Error("Query text cannot be empty.");
     }
 
-    console.log(`Starting query process...`);
+    console.log(`Starting Qdrant query process...`);
     console.log(`Collection: ${collectionName}`);
     console.log(`Embedding Model: ${modelName}`);
     console.log(`Query: "${queryText}"`);
     console.log(`Number of results: ${nResults}`);
-
-    // Initialize ChromaDB client and get collection
-    // Explicitly set default database and tenant
-    const chroma = new ChromaClient({
-        path: process.env.CHROMA_URL || "http://localhost:8000",
-        database: process.env.CHROMA_DATABASE || "default_database",
-        tenant: process.env.CHROMA_TENANT || "default_tenant"
-    });
-    let collection: Collection;
-    try {
-        console.log(`Connecting to ChromaDB (Tenant: ${chroma.tenant}, DB: ${chroma.database}) and getting collection '${collectionName}'...`);
-        // Use getCollection here, assuming it exists from indexing
-        // Use type assertion to bypass strict embeddingFunction requirement
-        collection = await chroma.getCollection({ name: collectionName } as any);
-        console.log(`Successfully connected to collection '${collectionName}'.`);
-    } catch (error) {
-        const chromaPath = process.env.CHROMA_URL || "http://localhost:8000";
-        const chromaTenant = process.env.CHROMA_TENANT || "default_tenant";
-        const chromaDatabase = process.env.CHROMA_DATABASE || "default_database";
-        console.error(`\n❌ Error getting ChromaDB collection '${collectionName}':`, error);
-        console.error(`\n   Troubleshooting Tips:`);
-        console.error(`   1. Ensure ChromaDB is running (e.g., via Docker).`);
-        console.error(`   2. Verify the collection '${collectionName}' exists.`);
-        console.error(`   3. Did you run the indexing script first (bun run src/indexer.ts)?`);
-        console.error(`   4. Check if ChromaDB is accessible at ${chromaPath}`);
-        console.error(`   5. Verify the tenant ('${chromaTenant}') and database ('${chromaDatabase}') exist.`);
-        console.error(`   (These can be configured via CHROMA_URL, CHROMA_TENANT, CHROMA_DATABASE env vars)`);
-        throw new Error(`Failed to get ChromaDB collection: ${error instanceof Error ? error.message : String(error)}`);
+    console.log(`Qdrant URL: ${qdrantUrl}`);
+    if (qdrantApiKey) {
+        console.log(`Qdrant API Key: Provided (hidden)`);
     }
 
+    // Initialize Qdrant client
+    let client: QdrantClient;
+    try {
+        console.log(`Connecting to Qdrant at ${qdrantUrl}...`);
+        client = new QdrantClient({ 
+            url: qdrantUrl,
+            apiKey: qdrantApiKey,
+        });
+        // Optional: Ping Qdrant to verify connection early
+        // await client.api('GET', '/'); // Example ping, adjust endpoint if needed
+        console.log(`Successfully initialized Qdrant client.`);
+    } catch (error) {
+        console.error(`\n❌ Error initializing Qdrant client at ${qdrantUrl}:`, error);
+        console.error(`\n   Troubleshooting Tips:`);
+        console.error(`   1. Ensure Qdrant is running (e.g., via Docker).`);
+        console.error(`   2. Verify the Qdrant URL ('${qdrantUrl}') is correct.`);
+        console.error(`   3. If using Qdrant Cloud, ensure the API key is valid.`);
+        console.error(`   (Configure via QDRANT_URL, QDRANT_API_KEY env vars)`);
+        throw new Error(`Failed to initialize Qdrant client: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    
+    // Check if collection exists (optional but good practice)
+    try {
+        await client.getCollection(collectionName);
+        console.log(`Collection '${collectionName}' exists.`);
+    } catch (error: any) {
+         if (error?.status === 404) {
+             console.error(`\n❌ Error: Collection '${collectionName}' not found in Qdrant.`);
+             console.error(`   Troubleshooting Tips:`);
+             console.error(`   1. Did you run the indexing script first (e.g., bun run src/indexer-qdrant.ts)?`);
+             console.error(`   2. Verify the collection name matches the one used during indexing.`);
+             console.error(`   (Configure via QDRANT_COLLECTION env var)`);
+             throw new Error(`Collection '${collectionName}' not found.`);
+         } else {
+            // Handle other potential errors during collection check
+            console.error(`\n❌ Error checking Qdrant collection '${collectionName}':`, error);
+            throw new Error(`Failed to check Qdrant collection: ${error instanceof Error ? error.message : String(error)}`);
+         }
+    }
+
+
     // Initialize embedding model pipeline
-    let embedder: any; // Using 'any' as in indexer.ts
+    let embedder: any; 
     try {
         console.log(`Loading embedding model '${modelName}'...`);
         embedder = await pipeline('feature-extraction', modelName);
@@ -71,16 +91,13 @@ export async function queryDocs(
     let queryEmbedding: number[];
     try {
         console.log("Generating query embedding...");
-        // Embed a single string
         const output = await embedder(queryText, { pooling: 'mean', normalize: true });
-        // Extract the embedding - adjust based on actual output structure
+        
+        // Adapt embedding extraction based on transformers.js output structure
         if (output && output.data instanceof Float32Array) {
             queryEmbedding = Array.from(output.data);
-        } else if (output?.embedding) { // Check for structure like { embedding: [...] }
-            queryEmbedding = Array.from(output.embedding);
-        } else if (Array.isArray(output) && output[0]?.embedding) { // Check for [{ embedding: [...] }, ...]
-             queryEmbedding = Array.from(output[0].embedding);
         } else {
+            console.error("Unexpected embedding output format:", output);
             throw new Error("Could not extract embedding from pipeline output for query.");
         }
         console.log(`Query embedding generated successfully (dimensions: ${queryEmbedding.length}).`);
@@ -89,19 +106,20 @@ export async function queryDocs(
         throw new Error(`Failed during query embedding: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    // Query ChromaDB
+    // Query Qdrant
     try {
-        console.log(`Querying collection '${collectionName}'...`);
-        const results = await collection.query({
-            queryEmbeddings: [queryEmbedding],
-            nResults: nResults,
-            // include: ["metadatas", "documents", "distances"] // Optionally specify fields to include
+        console.log(`Querying Qdrant collection '${collectionName}'...`);
+        const results = await client.search(collectionName, {
+            vector: queryEmbedding,
+            limit: nResults,
+            with_payload: true, // Include payload in results
+            // with_vector: false, // Optionally include vectors
         });
-        console.log(`Query successful.`);
+        console.log(`Qdrant query successful.`);
         return results;
     } catch (error) {
-        console.error(`Error querying ChromaDB collection '${collectionName}':`, error);
-        throw new Error(`Failed during ChromaDB query: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(`Error querying Qdrant collection '${collectionName}':`, error);
+        throw new Error(`Failed during Qdrant query: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
 
@@ -110,27 +128,36 @@ async function run() {
     const query = process.argv.find((arg, i) => i > 1 && !arg.startsWith('--')); // Find first non-flag arg after script name
     if (!query) {
         console.error("Please provide a query string as a command-line argument.");
-        console.error("Example: bun src/query.ts --run \"How to install Bun?\"");
+        console.error('Example: bun src/query-qdrant.ts --run "What is Qdrant?"');
         process.exit(1);
     }
 
-    const collectionName = process.env.CHROMA_COLLECTION || DEFAULT_COLLECTION;
+    const collectionName = DEFAULT_COLLECTION; // Uses env var QDRANT_COLLECTION or default
     const model = process.env.EMBEDDING_MODEL || DEFAULT_MODEL;
     const numResults = process.env.NUM_RESULTS ? parseInt(process.env.NUM_RESULTS, 10) : 5;
+    const qdrantUrl = DEFAULT_QDRANT_URL; // Uses env var QDRANT_URL or default
+    const qdrantApiKey = process.env.QDRANT_API_KEY; // Uses env var QDRANT_API_KEY
 
     if (isNaN(numResults) || numResults <= 0) {
-        console.error(`Invalid NUM_RESULTS environment variable: ${process.env.NUM_RESULTS}. Using default 5.`);
+        console.warn(`Invalid NUM_RESULTS environment variable: ${process.env.NUM_RESULTS}. Using default ${5}.`);
         // Keep the default, don't exit process.exit(1);
     }
 
     try {
-        const queryResults = await queryDocs(query, collectionName, model, numResults);
-        console.log("\n--- Query Results --- ");
+        const queryResults = await queryDocs(
+            query, 
+            collectionName, 
+            model, 
+            numResults, 
+            qdrantUrl, 
+            qdrantApiKey
+        );
+        console.log("\n--- Qdrant Query Results --- ");
         // Pretty print the results (can be customized)
         console.log(JSON.stringify(queryResults, null, 2));
-         console.log("\n-------------------");
+        console.log("\n--------------------------");
     } catch (error) {
-        console.error("\n--- Query failed --- ", error);
+        console.error("\n--- Qdrant Query failed --- ", error);
         process.exit(1);
     }
 }

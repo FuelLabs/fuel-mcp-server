@@ -1,247 +1,329 @@
-import { describe, it, expect, mock, beforeEach, afterEach, afterAll, spyOn } from "bun:test";
-import { indexDocs } from "./indexer";
-import * as fsPromises from "fs/promises";
-import * as ChromaDB from "chromadb";
-import * as Transformers from "@xenova/transformers";
-import * as Chunker from "./chunker";
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import * as fsPromises from 'node:fs/promises';
+import path from 'node:path';
+import { QdrantClient } from '@qdrant/js-client-rest';
+import { pipeline } from '@xenova/transformers';
+import { indexDocsQdrant } from './indexer';
+import { chunkMarkdown } from './chunker';
 
 // --- Mocks ---
-const mockFsPromises = {
-  readdir: mock(async (dirPath: string): Promise<string[]> => {
-    console.log(`Mock readdir called with: ${dirPath}`);
-    // Simulate finding specific files for testing
-    if (dirPath === "./test_docs_errors") return Promise.reject(new Error("Failed to read dir"));
-    if (dirPath === "./test_docs_empty") return Promise.resolve(['image.png', 'other.file']);
-    if (dirPath === "./test_docs_mixed") return Promise.resolve(['doc1.md', 'image.png', 'doc2.md']);
-    // Default mock for success case
-    return Promise.resolve(["doc1.md", "doc2.md", "not-markdown.txt"]);
-  }),
-  readFile: mock(async (path: string, encoding: string): Promise<string> => {
-    console.log(`Mock readFile called with: ${path}, ${encoding}`);
-    if (path.endsWith("doc1.md")) return "# Doc 1\nContent 1\n```js\ncode1\n```";
-    if (path.endsWith("doc2.md")) return "## Doc 2\nContent 2";
-    if (path.includes("fail_read")) return Promise.reject(new Error("Read failed"));
-    return "other content";
-  }),
-};
-mock.module("fs/promises", () => mockFsPromises);
 
-const mockCollection = {
-  add: mock(async (data: any) => {
-    console.log("Mock collection.add called with ids:", data?.ids);
-    if (data?.ids?.includes("trigger_add_fail.md-0")) throw new Error("Chroma add failed");
-    return Promise.resolve();
-  }),
-  // Add other methods if needed by indexer
-};
-const mockChromaClient = {
-    getOrCreateCollection: mock(async () => mockCollection),
-    deleteCollection: mock(async () => {}), // Keep this for potential future use
-};
-mock.module("chromadb", () => ({
-  ChromaClient: mock(() => mockChromaClient),
+// Mock fs/promises
+mock.module('node:fs/promises', () => ({
+    readdir: mock(async (dirPath: string) => {
+        if (dirPath === './test-docs-empty') return [];
+        if (dirPath === './test-docs-no-md') return ['not-a-markdown.txt'];
+        if (dirPath === './test-docs') return ['doc1.md', 'doc2.md', 'image.png'];
+        if (dirPath === './test-docs-large') {
+            return Array.from({ length: 150 }, (_, i) => `large_doc_${i + 1}.md`);
+        }
+        throw new Error(`ENOENT: no such file or directory, scandir '${dirPath}'`);
+    }),
+    readFile: mock(async (filePath: string, encoding: string) => {
+        expect(encoding).toBe('utf-8');
+        const fileName = path.basename(filePath);
+        if (fileName === 'doc1.md') return '# Doc 1\n\nContent paragraph.';
+        if (fileName === 'doc2.md') return '## Doc 2 Title\n\n```js\nconsole.log("hello");\n```\n\nMore text.';
+        if (fileName.startsWith('large_doc_')) return `# Large Doc ${fileName}\n\nSome content.`;
+        throw new Error(`ENOENT: no such file or directory, open '${filePath}'`);
+    }),
 }));
 
-// Mock the pipeline function specifically
-// This mock simulates the outer `pipeline` function from transformers.js
-const mockPipelineLoader = mock(async (task: string, model: string) => {
-    console.log(`Mock pipeline loader called with task: ${task}, model: ${model}`);
-    if (task === 'feature-extraction') {
-        // Return the actual function that performs the embedding simulation
-        const embedderFn = async (texts: string | string[], options?: any) => {
-            console.log(`Mock embedder function called with texts: ${JSON.stringify(texts).substring(0, 50)}...`);
-            // Simulate embedding failure
-            if (Array.isArray(texts) && texts.includes("fail_embedding")) {
-                throw new Error("Embedding failed");
-            }
-            // Simulate successful embedding
-            const actualTexts = Array.isArray(texts) ? texts : [texts];
-            const embeddings = actualTexts.map((t, i) => (
-                Array(5).fill(0.1 * (i + 1)) // Simple deterministic embedding
-            ));
-            // Mimic the structure often returned by the feature-extraction pipeline
-            // Note: Real structure might vary; adjust indexer.ts if needed
-            return embeddings.map(emb => ({ embedding: emb }));
-        };
-        return embedderFn;
+// Mock @xenova/transformers pipeline
+// Define mockEmbedder scope accessible within the module mock
+let mockEmbedder = mock((texts: string[], options: any) => {
+    console.log(`Default mock embedder called with ${texts.length} texts.`);
+    const embeddingDim = 384;
+    const embeddings = texts.map((_, i) => Array(embeddingDim).fill(i * 0.1));
+    const flatEmbeddings = new Float32Array(texts.length * embeddingDim);
+    embeddings.forEach((emb, textIdx) => {
+        emb.forEach((val, dimIdx) => {
+            flatEmbeddings[textIdx * embeddingDim + dimIdx] = val;
+        });
+    });
+    return Promise.resolve({ data: flatEmbeddings, dims: [texts.length, embeddingDim] });
+});
+
+const pipelineMock = mock(async (task: string, model: string) => {
+    console.log(`Mock pipeline loaded for task: ${task}, model: ${model}`);
+    expect(task).toBe('feature-extraction');
+    // Return the current mockEmbedder instance
+    return mockEmbedder;
+});
+
+mock.module('@xenova/transformers', () => ({
+    pipeline: pipelineMock,
+    env: { cacheDir: '' },
+}));
+
+
+// Mock QdrantClient
+const mockQdrantClientInstance = {
+    getCollections: mock(async (options?: { consistency?: any }) => {
+        console.log('Mock getCollections called');
+        if (mockQdrantClientInstance.simulateCollectionExists) {
+            return { collections: [{ name: mockQdrantClientInstance.simulateCollectionNameExists }] };
+        }
+        return { collections: [] };
+    }),
+    createCollection: mock(async (name: string, params: any) => {
+        console.log(`Mock createCollection called for '${name}'`);
+        expect(name).toBeString();
+        expect(params.vectors.size).toBe(384);
+        expect(params.vectors.distance).toBe('Cosine');
+        mockQdrantClientInstance.simulateCollectionExists = true;
+        mockQdrantClientInstance.simulateCollectionNameExists = name;
+        return true;
+    }),
+    upsert: mock(async (name: string, data: { wait: boolean, points: any[] }) => {
+        console.log(`Mock upsert called for '${name}' with ${data.points.length} points.`);
+        expect(name).toBeString();
+        expect(data.wait).toBe(true);
+        expect(Array.isArray(data.points)).toBe(true);
+        data.points.forEach(p => {
+            expect(p.id).toBeString();
+            expect(p.vector).toBeArray();
+            expect(p.vector.length).toBe(384);
+            expect(p.payload).toBeObject();
+            expect(p.payload.source).toBeString();
+            expect(p.payload.type).toBeString();
+            expect(p.payload.content).toBeString();
+        });
+        mockQdrantClientInstance.upsertCallCount += 1;
+        mockQdrantClientInstance.pointsUpserted.push(...data.points);
+        return { status: 'ok', result: { operation_id: 123, status: 'completed' } };
+    }),
+    simulateCollectionExists: false,
+    simulateCollectionNameExists: '' as string,
+    upsertCallCount: 0,
+    pointsUpserted: [] as any[],
+    resetMock: () => {
+        mockQdrantClientInstance.getCollections.mockClear();
+        mockQdrantClientInstance.createCollection.mockClear();
+        mockQdrantClientInstance.upsert.mockClear();
+        mockQdrantClientInstance.simulateCollectionExists = false;
+        mockQdrantClientInstance.simulateCollectionNameExists = '';
+        mockQdrantClientInstance.upsertCallCount = 0;
+        mockQdrantClientInstance.pointsUpserted = [];
     }
-    throw new Error(`Mock pipeline loader only supports feature-extraction task for model ${model}`);
-});
-
-mock.module("@xenova/transformers", () => ({
-  pipeline: mockPipelineLoader, // Use the loader mock here
-  env: { cacheDir: '' } // Mock env as well
+};
+mock.module('@qdrant/js-client-rest', () => ({
+    QdrantClient: mock(() => mockQdrantClientInstance)
 }));
 
-describe("indexDocs", () => {
-  const DOCS_DIR = "./test_docs";
-  const COLLECTION_NAME = "test_collection";
-  const MODEL_NAME = "Xenova/all-MiniLM-L6-v2"; // Keep consistent
-  const TARGET_TOKEN_SIZE = 200;
 
-  beforeEach(() => {
-    // Reset standard mocks
-    mockCollection.add.mockClear();
-    mockFsPromises.readdir.mockClear();
-    mockFsPromises.readFile.mockClear();
-    mockPipelineLoader.mockClear();
-    mockChromaClient.getOrCreateCollection.mockClear();
+// --- Test Suite ---
 
-    // Setup spy for chunkMarkdown for this test suite
-    spyOn(Chunker, 'chunkMarkdown').mockImplementation((content: string, size: number, estimator: (text: string) => number) => {
-        console.log(`Spy on chunkMarkdown called with content starting: ${content.substring(0, 20)}...`);
-        // Specific overrides for indexer tests
-        if (content.includes("# Doc 1")) {
-            return [
-                { content: "# Doc 1\nContent 1", type: "text" },
-                { content: "```js\ncode1\n```", type: "code" },
-            ];
+describe('indexDocsQdrant', () => {
+    const consoleLogMock = mock();
+    const consoleErrorMock = mock();
+    const originalLog = console.log;
+    const originalError = console.error;
+
+    beforeEach(() => {
+        // Reset specific mocks used globally or across tests
+        pipelineMock.mockClear();
+        mockEmbedder.mockClear(); // Clear the embedder mock itself
+        // Reset Qdrant mock state
+        mockQdrantClientInstance.resetMock();
+
+        // Reset console mocks
+        consoleLogMock.mockClear();
+        consoleErrorMock.mockClear();
+        console.log = consoleLogMock;
+        console.error = consoleErrorMock;
+
+        // Reset environment variables
+        delete process.env.QDRANT_URL;
+        delete process.env.QDRANT_API_KEY;
+        delete process.env.QDRANT_COLLECTION;
+        delete process.env.EMBEDDING_MODEL;
+        delete process.env.CHUNK_SIZE;
+    });
+
+    afterEach(() => {
+        console.log = originalLog;
+        console.error = originalError;
+    });
+
+    it('should successfully index markdown files', async () => {
+        const docsDir = './test-docs';
+        const collectionName = 'test-collection';
+
+        await indexDocsQdrant(docsDir, collectionName);
+
+        expect(mockQdrantClientInstance.getCollections).toHaveBeenCalledTimes(1);
+        expect(mockQdrantClientInstance.createCollection).toHaveBeenCalledTimes(1);
+        expect(mockQdrantClientInstance.createCollection).toHaveBeenCalledWith(collectionName, { vectors: { size: 384, distance: 'Cosine' } });
+        expect(mockQdrantClientInstance.upsert).toHaveBeenCalledTimes(1);
+
+        expect(mockQdrantClientInstance.pointsUpserted.length).toBeGreaterThan(0);
+        const firstPoint = mockQdrantClientInstance.pointsUpserted[0];
+        // Source file could be doc1 or doc2 depending on chunking/processing order
+        expect(firstPoint.payload.source).toMatch(/doc[12]\.md/); // Corrected Regex
+        expect(firstPoint.payload.content).toBeString();
+        expect(firstPoint.vector.length).toBe(384);
+
+        expect(pipelineMock).toHaveBeenCalledTimes(1);
+        expect(mockEmbedder).toHaveBeenCalledTimes(1);
+
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Starting Qdrant indexing process...`));
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Found 2 markdown files to process.`));
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Collection '${collectionName}' not found. Creating...`));
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Upserting batch to Qdrant...`));
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Qdrant Indexing finished!`));
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Total chunks upserted to Qdrant: ${mockQdrantClientInstance.pointsUpserted.length}`));
+        expect(consoleErrorMock).not.toHaveBeenCalled();
+    });
+
+    it('should use existing collection if found', async () => {
+        const docsDir = './test-docs';
+        const collectionName = 'test-collection';
+        mockQdrantClientInstance.simulateCollectionExists = true;
+        mockQdrantClientInstance.simulateCollectionNameExists = collectionName;
+
+        await indexDocsQdrant(docsDir, collectionName);
+
+        expect(mockQdrantClientInstance.getCollections).toHaveBeenCalledTimes(1);
+        expect(mockQdrantClientInstance.createCollection).not.toHaveBeenCalled();
+        expect(mockQdrantClientInstance.upsert).toHaveBeenCalledTimes(1);
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Collection '${collectionName}' already exists.`));
+        expect(consoleLogMock).not.toHaveBeenCalledWith(expect.stringContaining(`Creating...`));
+    });
+
+    it('should handle directories with no markdown files', async () => {
+        const docsDir = './test-docs-no-md';
+        await indexDocsQdrant(docsDir);
+
+        // Pipeline should not be called if no files are processed
+        expect(pipelineMock).not.toHaveBeenCalled();
+        expect(mockQdrantClientInstance.getCollections).not.toHaveBeenCalled();
+        expect(mockQdrantClientInstance.createCollection).not.toHaveBeenCalled();
+        expect(mockQdrantClientInstance.upsert).not.toHaveBeenCalled();
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining("No markdown files found in the specified directory."));
+    });
+
+    it('should handle empty directories', async () => {
+        const docsDir = './test-docs-empty';
+        await indexDocsQdrant(docsDir);
+
+        expect(pipelineMock).not.toHaveBeenCalled();
+        expect(mockQdrantClientInstance.getCollections).not.toHaveBeenCalled();
+        expect(mockQdrantClientInstance.createCollection).not.toHaveBeenCalled();
+        expect(mockQdrantClientInstance.upsert).not.toHaveBeenCalled();
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining("No markdown files found in the specified directory."));
+    });
+
+    it('should handle errors during Qdrant connection', async () => {
+        const docsDir = './test-docs';
+        const collectionName = 'error-connect-collection';
+        const connectError = new Error("Qdrant unavailable");
+        mockQdrantClientInstance.getCollections.mockImplementationOnce(async () => {
+             throw connectError;
+        });
+
+        await expect(indexDocsQdrant(docsDir, collectionName))
+            .rejects
+            .toThrow(`Failed to initialize Qdrant client/collection: Failed to ensure Qdrant collection: ${connectError.message}`);
+
+        expect(consoleErrorMock).toHaveBeenCalledWith(expect.stringContaining(`Error initializing Qdrant client or ensuring collection '${collectionName}'`), expect.any(Error));
+        // Ensure pipeline wasn't called if connection failed early
+        expect(pipelineMock).not.toHaveBeenCalled();
+    });
+
+    it('should handle errors during embedding', async () => {
+        const docsDir = './test-docs';
+        const collectionName = 'error-embed-collection';
+        const embedError = new Error("Embedding failed");
+        mockEmbedder.mockImplementationOnce(async () => {
+             throw embedError;
+        });
+
+        await expect(indexDocsQdrant(docsDir, collectionName))
+            .rejects
+            .toThrow(`Failed during embedding generation: ${embedError.message}`);
+
+        expect(pipelineMock).toHaveBeenCalledTimes(1); // Pipeline is called
+        expect(mockEmbedder).toHaveBeenCalledTimes(1); // Embedder is called and rejects
+        expect(consoleErrorMock).toHaveBeenCalledWith(expect.stringContaining("Error generating embeddings for batch 1"), embedError);
+        expect(mockQdrantClientInstance.upsert).not.toHaveBeenCalled(); // Upsert should not be called
+    });
+
+    it('should handle errors during Qdrant upsert', async () => {
+        const docsDir = './test-docs';
+        const collectionName = 'error-upsert-collection';
+        const upsertError = new Error("Upsert failed");
+        mockQdrantClientInstance.upsert.mockImplementationOnce(async () => {
+            throw upsertError;
+        });
+
+        await expect(indexDocsQdrant(docsDir, collectionName))
+            .rejects
+            .toThrow(`Failed during Qdrant upsert operation: ${upsertError.message}`);
+
+        expect(pipelineMock).toHaveBeenCalledTimes(1); // Pipeline called
+        expect(mockEmbedder).toHaveBeenCalledTimes(1); // Embedding succeeded
+        expect(mockQdrantClientInstance.upsert).toHaveBeenCalledTimes(1); // Upsert called and rejected
+        expect(consoleErrorMock).toHaveBeenCalledWith(expect.stringContaining("Error upserting batch 1 to Qdrant"), upsertError);
+    });
+
+
+    it('should use environment variables for configuration', async () => {
+        process.env.QDRANT_URL = 'http://qdrant-prod:6333';
+        process.env.QDRANT_API_KEY = 'test-key';
+        process.env.QDRANT_COLLECTION = 'prod-collection';
+        process.env.EMBEDDING_MODEL = 'Xenova/custom-model';
+        process.env.CHUNK_SIZE = '500';
+
+        const docsDir = './test-docs';
+        // Simulate the wrapper function reading env vars
+        const expectedCollectionName = process.env.QDRANT_COLLECTION || 'bun_qdrant_docs'; // Read from env
+        const expectedModelName = process.env.EMBEDDING_MODEL || 'Xenova/all-MiniLM-L6-v2'; // Read from env
+        const expectedChunkSize = process.env.CHUNK_SIZE ? parseInt(process.env.CHUNK_SIZE, 10) : 2000; // Read from env
+
+        // Call indexDocsQdrant with values derived from env vars
+        await indexDocsQdrant(docsDir, expectedCollectionName, expectedModelName, expectedChunkSize);
+
+        // --- Assertions ---
+
+        // Check logs using a more direct approach for collection name
+        const consoleCalls = consoleLogMock.mock.calls;
+        const collectionLogFound = consoleCalls.some(args =>
+            typeof args[0] === 'string' && args[0].includes(`Collection: ${expectedCollectionName}`)
+        );
+        expect(collectionLogFound).toBe(true);
+
+        // Check other logs with expected values from env vars
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Embedding Model: ${expectedModelName}`));
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Target Chunk Size (tokens): ${expectedChunkSize}`));
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Connecting to Qdrant at http://qdrant-prod:6333...`));
+
+        // Check pipeline called with model from env var
+        expect(pipelineMock).toHaveBeenCalledWith('feature-extraction', expectedModelName);
+
+        // Check Qdrant methods called with collection from env var
+        expect(mockQdrantClientInstance.createCollection).toHaveBeenCalledWith(expectedCollectionName, expect.anything());
+        expect(mockQdrantClientInstance.upsert).toHaveBeenCalledWith(expectedCollectionName, expect.anything());
+    });
+
+    it('should process files in batches', async () => {
+        const docsDir = './test-docs-large';
+        const collectionName = 'batch-test-collection';
+        const batchSize = 100;
+
+        const sampleContent = `# Large Doc large_doc_1.md\n\nSome content.`;
+        const sampleChunks = chunkMarkdown(sampleContent, 2000, (t) => t.split(/\s+/).length);
+        const expectedTotalChunks = 150 * sampleChunks.length;
+        const expectedBatches = Math.ceil(expectedTotalChunks / batchSize);
+
+        await indexDocsQdrant(docsDir, collectionName);
+
+        expect(mockQdrantClientInstance.upsert).toHaveBeenCalledTimes(expectedBatches);
+        expect(mockQdrantClientInstance.pointsUpserted.length).toBe(expectedTotalChunks);
+
+        for (let i = 1; i <= expectedBatches; i++) {
+            expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Processing batch ${i} of ${expectedBatches}`));
         }
-        if (content.includes("## Doc 2")) {
-            return [{ content: "## Doc 2\nContent 2", type: "text" }];
-        }
-        if (content.includes("fail_embedding")) {
-            return [{ content: "fail_embedding", type: "text" }];
-        }
-        if (content.includes("fail_add")) {
-             return [{ content: "fail_add content", type: "text", id: "trigger_add_fail.md-0" }];
-        }
-        // If no override matches, return empty array to match original signature
-        console.warn("Spy on chunkMarkdown called with unhandled content in indexer.test.ts");
-        return [];
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Total chunks upserted to Qdrant: ${expectedTotalChunks}`));
     });
-
-  });
-
-  afterEach(() => {
-      // Restore the original chunkMarkdown implementation after each test
-      (Chunker.chunkMarkdown as any).mockRestore();
-  });
-
-  it("should read markdown files, chunk, embed, and add to ChromaDB", async () => {
-    await indexDocs(DOCS_DIR, COLLECTION_NAME, MODEL_NAME, TARGET_TOKEN_SIZE);
-
-    // Verify file reading
-    expect(mockFsPromises.readdir).toHaveBeenCalledWith(DOCS_DIR);
-    expect(mockFsPromises.readFile).toHaveBeenCalledTimes(2); // Only .md files
-    expect(mockFsPromises.readFile).toHaveBeenCalledWith(`test_docs/doc1.md`, "utf-8");
-    expect(mockFsPromises.readFile).toHaveBeenCalledWith(`test_docs/doc2.md`, "utf-8");
-
-    // Verify chunking (using the spy)
-    expect(Chunker.chunkMarkdown).toHaveBeenCalledTimes(2);
-    // Check the arguments passed to chunkMarkdown spy
-    expect((Chunker.chunkMarkdown as any).mock.calls[0]![0]).toContain("# Doc 1");
-    expect((Chunker.chunkMarkdown as any).mock.calls[0]![1]).toBe(TARGET_TOKEN_SIZE);
-    expect((Chunker.chunkMarkdown as any).mock.calls[1]![0]).toContain("## Doc 2");
-
-    // Verify embedding loader was called
-    expect(mockPipelineLoader).toHaveBeenCalledTimes(1);
-    expect(mockPipelineLoader).toHaveBeenCalledWith('feature-extraction', MODEL_NAME);
-
-    // Note: We can't easily verify the calls to the *returned* embedderFn
-    // directly using mockPipelineLoader.mock.calls without more complex mocking.
-    // We rely on the fact that if `collection.add` was called with the correct
-    // embeddings, the embedderFn must have been called correctly internally.
-
-    // Verify adding to ChromaDB
-    expect(mockCollection.add).toHaveBeenCalledTimes(1);
-    const addedData = mockCollection.add.mock.calls[0]![0];
-
-    expect(addedData.ids).toHaveLength(3);
-    expect(addedData.ids[0]).toMatch(/^doc1\.md-\d+$/);
-    expect(addedData.ids[1]).toMatch(/^doc1\.md-\d+$/);
-    expect(addedData.ids[2]).toMatch(/^doc2\.md-\d+$/);
-
-    expect(addedData.documents).toEqual([
-        "# Doc 1\nContent 1",
-        "```js\ncode1\n```",
-        "## Doc 2\nContent 2"
-    ]);
-
-    expect(addedData.embeddings).toHaveLength(3);
-    // These match the deterministic mockPipeline output
-    expect(addedData.embeddings[0]).toEqual(Array(5).fill(0.1 * (0 + 1)));
-    expect(addedData.embeddings[1]).toEqual(Array(5).fill(0.1 * (1 + 1)));
-    expect(addedData.embeddings[2]).toEqual(Array(5).fill(0.1 * (2 + 1)));
-
-    expect(addedData.metadatas).toEqual([
-        { source: "doc1.md", type: "text" },
-        { source: "doc1.md", type: "code" },
-        { source: "doc2.md", type: "text" },
-    ]);
-
-  });
-
-  it("should handle errors during file reading (readdir)", async () => {
-    // Use a different dir name to trigger the readdir mock error
-    const errorDir = "./test_docs_errors";
-    await expect(indexDocs(errorDir, COLLECTION_NAME, MODEL_NAME, TARGET_TOKEN_SIZE))
-        .rejects.toThrow("Failed to read directory: Failed to read dir");
-
-     expect(mockCollection.add).not.toHaveBeenCalled();
-  });
-
-  it("should handle errors during file reading (readFile)", async () => {
-      // Setup readdir mock to return a file that causes readFile to fail
-      mockFsPromises.readdir.mockResolvedValueOnce(["fail_read.md"]);
-      // The indexer should catch the readFile error and log it, but continue (or potentially stop based on impl.)
-      // Current implementation logs and continues, so it shouldn't throw here, but check mocks.
-      await indexDocs(DOCS_DIR, COLLECTION_NAME, MODEL_NAME, TARGET_TOKEN_SIZE);
-
-      // Expect readFile to have been called and failed (error logged internally)
-      expect(mockFsPromises.readFile).toHaveBeenCalledWith(`test_docs/fail_read.md`, "utf-8");
-      // Expect add not to be called because no chunks were successfully processed
-      expect(mockCollection.add).not.toHaveBeenCalled();
-      // Note: Test could be improved by spying on console.error
-    });
-
-    it("should handle errors during embedding", async () => {
-        // Setup mocks to provide content that triggers embedding failure
-        mockFsPromises.readdir.mockResolvedValueOnce(["trigger_embed_fail.md"]);
-        mockFsPromises.readFile.mockResolvedValueOnce("fail_embedding content");
-
-        await expect(indexDocs(DOCS_DIR, COLLECTION_NAME, MODEL_NAME, TARGET_TOKEN_SIZE))
-            .rejects.toThrow("Failed during embedding generation: Embedding failed");
-
-        expect(mockCollection.add).not.toHaveBeenCalled();
-        // Ensure pipeline loader was called
-        expect(mockPipelineLoader).toHaveBeenCalledWith('feature-extraction', MODEL_NAME);
-        // Cannot easily assert the args passed to the *inner* embedderFn here
-    });
-
-    it("should handle errors during ChromaDB add", async () => {
-         // Setup mocks to provide content that triggers add failure
-        mockFsPromises.readdir.mockResolvedValueOnce(["trigger_add_fail.md"]);
-        mockFsPromises.readFile.mockResolvedValueOnce("fail_add content");
-
-        await expect(indexDocs(DOCS_DIR, COLLECTION_NAME, MODEL_NAME, TARGET_TOKEN_SIZE))
-            .rejects.toThrow("Failed during ChromaDB add operation: Chroma add failed");
-
-        expect(mockCollection.add).toHaveBeenCalled(); // It was called, but failed
-         // Ensure add was called with the problematic ID
-        expect(mockCollection.add.mock.calls[0]![0].ids).toContain("trigger_add_fail.md-0");
-        // Ensure pipeline loader was called
-        expect(mockPipelineLoader).toHaveBeenCalledWith('feature-extraction', MODEL_NAME);
-    });
-
-      it("should skip non-markdown files", async () => {
-        // Use a specific dir name to trigger the mixed files mock
-        const mixedDir = "./test_docs_mixed";
-        await indexDocs(mixedDir, COLLECTION_NAME, MODEL_NAME, TARGET_TOKEN_SIZE);
-        expect(mockFsPromises.readFile).toHaveBeenCalledTimes(2);
-        expect(mockFsPromises.readFile).toHaveBeenCalledWith(`test_docs_mixed/doc1.md`, "utf-8");
-        expect(mockFsPromises.readFile).toHaveBeenCalledWith(`test_docs_mixed/doc2.md`, "utf-8");
-        expect(mockFsPromises.readFile).not.toHaveBeenCalledWith(`test_docs_mixed/image.png`, "utf-8");
-    });
-
-    it("should handle no markdown files found", async () => {
-        // Use a specific dir name to trigger the empty files mock
-        const emptyDir = "./test_docs_empty";
-        await indexDocs(emptyDir, COLLECTION_NAME, MODEL_NAME, TARGET_TOKEN_SIZE);
-        expect(mockFsPromises.readFile).not.toHaveBeenCalled();
-        expect(Chunker.chunkMarkdown).not.toHaveBeenCalled(); // Check the spy
-        expect(mockPipelineLoader).not.toHaveBeenCalled(); // Check the loader mock
-        expect(mockCollection.add).not.toHaveBeenCalled();
-         // Note: Could spy on console.log to verify the "No markdown files found" message.
-    });
-});
+}); 

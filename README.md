@@ -26,25 +26,14 @@ This server indexes Fuel and Sway documentation (including markdown files and po
 ## Prerequisites
 
 *   **Bun:** Install from [https://bun.sh/](https://bun.sh/)
-*   **ChromaDB:** A running instance is required. The easiest way is using Docker:
+*   **QDrantDB:** A running instance is required. The easiest way is using Docker:
     ```bash
     docker pull chromadb/chroma
-    # Run ChromaDB (non-persistent, data lost on container stop)
-    # docker run -p 8000:8000 chromadb/chroma
-
-    # To make data persistent, use a volume mount:
-    
-    # Option 1: Bind Mount (Maps to a specific host directory)
-    # Creates a directory named "chroma_data" in your current working directory on the host
-    docker run -p 8000:8000 -v "$(pwd)/chroma_data":/data chromadb/chroma
-    
-    # Option 2: Named Volume (Alternative)
-    # Creates a docker-managed volume named "chroma_data"
-    # docker run -p 8000:8000 -v chroma_data:/data chromadb/chroma
+    # Run qdrant (w/ persistent data)
+    # docker run -p 6333:6333 -v "$(pwd)/qdrant_storage":/qdrant/storage qdrant/qdrant
     ```
-    The bind mount option (`-v "$(pwd)/chroma_data":/data`) is shown by default. It tells Docker to store the database data (located inside the container at `/data`) into a `chroma_data` directory within your current host working directory.
 
-    The scripts assume ChromaDB is accessible at `http://localhost:8000`.
+    The scripts assume qdrantdb is accessible at `http://localhost:6333`.
 
 ## Installation
 
