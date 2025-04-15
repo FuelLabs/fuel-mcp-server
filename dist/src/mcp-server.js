@@ -12,6 +12,11 @@ const server = new McpServer({
     name: "FuelMCPServer",
     version: "0.1.0"
 });
+function log(...messages) {
+    if (process.env.LOG_LEVEL === "debug") {
+        console.log(...messages);
+    }
+}
 // Define the search tool
 server.tool("searchFuelDocs", {
     query: z.string().describe("The search query for Fuel and Sway documentation."),
@@ -19,7 +24,7 @@ server.tool("searchFuelDocs", {
     modelName: z.string().optional().describe("Optional: Specify the embedding model name."),
     nResults: z.number().int().positive().optional().describe("Optional: Specify the number of search results (default 5).")
 }, async ({ query, collectionName, modelName, nResults }) => {
-    console.log(`MCP Tool 'searchFuelDocs' called with query: "${query}"`);
+    log(`MCP Tool 'searchFuelDocs' called with query: "${query}"`);
     const executeQuery = async () => {
         return await queryDocs(query, collectionName, // Will use default if undefined
         modelName, // Will use default if undefined
@@ -53,13 +58,13 @@ server.tool("searchFuelDocs", {
         console.error(`Initial error in searchFuelDocs tool: ${error.message}`);
         // Check if it's a connection error and attempt restart/retry
         if (error.message.includes("Unable to connect")) {
-            console.log("Qdrant connection error detected. Attempting to ensure Qdrant is running...");
+            log("Qdrant connection error detected. Attempting to ensure Qdrant is running...");
             try {
                 await ensureQdrantIsRunning();
                 // Wait a bit for Qdrant to potentially start up
-                console.log("Waiting 5 seconds for Qdrant to initialize...");
+                log("Waiting 5 seconds for Qdrant to initialize...");
                 await new Promise(resolve => setTimeout(resolve, 5000));
-                console.log("Retrying queryDocs call...");
+                log("Retrying queryDocs call...");
                 const results = await executeQuery(); // Retry the query
                 // Format results again after successful retry
                 const formattedResults = Array.isArray(results)
@@ -107,9 +112,9 @@ server.tool("searchFuelDocs", {
 async function startServer() {
     try {
         const transport = new StdioServerTransport();
-        console.log("Connecting MCP server via stdio...");
+        log("Connecting MCP server via stdio...");
         await server.connect(transport);
-        console.log("MCP Server connected and ready.");
+        log("MCP Server connected and ready.");
     }
     catch (error) {
         console.error("Failed to start MCP server:", error);
@@ -143,10 +148,10 @@ async function ensureQdrantIsRunning() {
     const qdrantPort = 6333;
     const isRunning = await isPortInUse(qdrantPort);
     if (isRunning) {
-        console.log(`Port ${qdrantPort} is already in use. Assuming Qdrant is running.`);
+        log(`Port ${qdrantPort} is already in use. Assuming Qdrant is running.`);
         return;
     }
-    console.log('Qdrant not detected, attempting to start via Docker...');
+    log('Qdrant not detected, attempting to start via Docker...');
     const dockerCommand = 'docker';
     const dockerArgs = [
         'run',
@@ -162,7 +167,7 @@ async function ensureQdrantIsRunning() {
             stdio: 'ignore' // Detach stdio
         });
         qdrantProcess.unref(); // Allow parent process to exit independently
-        console.log('Qdrant Docker container started in the background.');
+        log('Qdrant Docker container started in the background.');
     }
     catch (error) {
         console.error('Failed to start Qdrant Docker container:', error);
