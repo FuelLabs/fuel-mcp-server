@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 
 const filePath = path.join(__dirname, 'dist', 'src', 'mcp-server.js');
-const targetImport = 'import { queryDocs } from "./query";';
-const replacementImport = 'import { queryDocs } from "./query.js";';
+const targetImport = 'import { queryDocs, log } from "./query";';
+const replacementImport = 'import { queryDocs, log } from "./query.js";';
 
 console.log(`Running post-build script to modify: ${filePath}`);
 

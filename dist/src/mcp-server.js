@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { queryDocs } from "./query.js"; // Adjust path if necessary
+import { queryDocs, log } from "./query.js"; // Adjust path if necessary
 import { env } from '@xenova/transformers';
 import { spawn } from 'child_process';
 import net from 'net';
@@ -12,11 +12,6 @@ const server = new McpServer({
     name: "FuelMCPServer",
     version: "0.1.0"
 });
-function log(...messages) {
-    if (process.env.LOG_LEVEL === "debug") {
-        console.log(...messages);
-    }
-}
 // Define the search tool
 server.tool("searchFuelDocs", {
     query: z.string().describe("The search query for Fuel and Sway documentation."),

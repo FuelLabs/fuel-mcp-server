@@ -7,6 +7,11 @@ const DEFAULT_MODEL = "Xenova/all-MiniLM-L6-v2";
 // Ensure this matches the collection name used during indexing with Qdrant
 const DEFAULT_COLLECTION = process.env.QDRANT_COLLECTION || "bun_qdrant_docs";
 const DEFAULT_QDRANT_URL = process.env.QDRANT_URL || "http://localhost:6333";
+export function log(...messages) {
+    if (process.env.LOG_LEVEL === "debug") {
+        console.log(...messages);
+    }
+}
 /**
  * Queries the Qdrant collection with a given prompt.
  */
@@ -16,26 +21,26 @@ qdrantUrl = DEFAULT_QDRANT_URL, qdrantApiKey // Optional API key for Qdrant Clou
     if (!queryText) {
         throw new Error("Query text cannot be empty.");
     }
-    console.log(`Starting Qdrant query process...`);
-    console.log(`Collection: ${collectionName}`);
-    console.log(`Embedding Model: ${modelName}`);
-    console.log(`Query: "${queryText}"`);
-    console.log(`Number of results: ${nResults}`);
-    console.log(`Qdrant URL: ${qdrantUrl}`);
+    log(`Starting Qdrant query process...`);
+    log(`Collection: ${collectionName}`);
+    log(`Embedding Model: ${modelName}`);
+    log(`Query: "${queryText}"`);
+    log(`Number of results: ${nResults}`);
+    log(`Qdrant URL: ${qdrantUrl}`);
     if (qdrantApiKey) {
-        console.log(`Qdrant API Key: Provided (hidden)`);
+        log(`Qdrant API Key: Provided (hidden)`);
     }
     // Initialize Qdrant client
     let client;
     try {
-        console.log(`Connecting to Qdrant at ${qdrantUrl}...`);
+        log(`Connecting to Qdrant at ${qdrantUrl}...`);
         client = new QdrantClient({
             url: qdrantUrl,
             apiKey: qdrantApiKey,
         });
         // Optional: Ping Qdrant to verify connection early
         // await client.api('GET', '/'); // Example ping, adjust endpoint if needed
-        console.log(`Successfully initialized Qdrant client.`);
+        log(`Successfully initialized Qdrant client.`);
     }
     catch (error) {
         console.error(`\n❌ Error initializing Qdrant client at ${qdrantUrl}:`, error);
@@ -49,7 +54,7 @@ qdrantUrl = DEFAULT_QDRANT_URL, qdrantApiKey // Optional API key for Qdrant Clou
     // Check if collection exists (optional but good practice)
     try {
         await client.getCollection(collectionName);
-        console.log(`Collection '${collectionName}' exists.`);
+        log(`Collection '${collectionName}' exists.`);
     }
     catch (error) {
         if (error?.status === 404) {
@@ -69,9 +74,9 @@ qdrantUrl = DEFAULT_QDRANT_URL, qdrantApiKey // Optional API key for Qdrant Clou
     // Initialize embedding model pipeline
     let embedder;
     try {
-        console.log(`Loading embedding model '${modelName}'...`);
+        log(`Loading embedding model '${modelName}'...`);
         embedder = await pipeline('feature-extraction', modelName);
-        console.log(`Embedding model loaded successfully.`);
+        log(`Embedding model loaded successfully.`);
     }
     catch (error) {
         console.error(`Error loading embedding model '${modelName}':`, error);
@@ -80,7 +85,7 @@ qdrantUrl = DEFAULT_QDRANT_URL, qdrantApiKey // Optional API key for Qdrant Clou
     // Embed the query text
     let queryEmbedding;
     try {
-        console.log("Generating query embedding...");
+        log("Generating query embedding...");
         const output = await embedder(queryText, { pooling: 'mean', normalize: true });
         // Adapt embedding extraction based on transformers.js output structure
         if (output && output.data instanceof Float32Array) {
@@ -90,7 +95,7 @@ qdrantUrl = DEFAULT_QDRANT_URL, qdrantApiKey // Optional API key for Qdrant Clou
             console.error("Unexpected embedding output format:", output);
             throw new Error("Could not extract embedding from pipeline output for query.");
         }
-        console.log(`Query embedding generated successfully (dimensions: ${queryEmbedding.length}).`);
+        log(`Query embedding generated successfully (dimensions: ${queryEmbedding.length}).`);
     }
     catch (error) {
         console.error("Error generating query embedding:", error);
@@ -98,14 +103,14 @@ qdrantUrl = DEFAULT_QDRANT_URL, qdrantApiKey // Optional API key for Qdrant Clou
     }
     // Query Qdrant
     try {
-        console.log(`Querying Qdrant collection '${collectionName}'...`);
+        log(`Querying Qdrant collection '${collectionName}'...`);
         const results = await client.search(collectionName, {
             vector: queryEmbedding,
             limit: nResults,
             with_payload: true, // Include payload in results
             // with_vector: false, // Optionally include vectors
         });
-        console.log(`Qdrant query successful.`);
+        log(`Qdrant query successful.`);
         return results;
     }
     catch (error) {
@@ -132,10 +137,10 @@ async function run() {
     }
     try {
         const queryResults = await queryDocs(query, collectionName, model, numResults, qdrantUrl, qdrantApiKey);
-        console.log("\n--- Qdrant Query Results --- ");
+        log("\n--- Qdrant Query Results --- ");
         // Pretty print the results (can be customized)
-        console.log(JSON.stringify(queryResults, null, 2));
-        console.log("\n--------------------------");
+        log(JSON.stringify(queryResults, null, 2));
+        log("\n--------------------------");
     }
     catch (error) {
         console.error("\n--- Qdrant Query failed --- ", error);

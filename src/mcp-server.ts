@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { queryDocs } from "./query"; // Adjust path if necessary
+import { queryDocs, log } from "./query"; // Adjust path if necessary
 import { env } from '@xenova/transformers';
 import { spawn } from 'child_process';
 import net from 'net';
@@ -14,12 +14,6 @@ const server = new McpServer({
   name: "FuelMCPServer",
   version: "0.1.0"
 });
-
-function log(...messages: any[]) {
-  if (process.env.LOG_LEVEL === "debug") {
-    console.log(...messages);
-  }
-}
 
 // Define the search tool
 server.tool(
