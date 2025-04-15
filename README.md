@@ -45,6 +45,67 @@ This server indexes Fuel and Sway documentation (including markdown files) into 
     ```
     The scripts assume QdrantDB is accessible at `http://localhost:6333`. You can configure this using the `QDRANT_URL` environment variable. If your Qdrant instance requires an API key (e.g., Qdrant Cloud), set the `QDRANT_API_KEY` environment variable.
 
+## Running with Docker (Recommended)
+
+This project includes a `docker-compose.yml` file to easily run both the Qdrant database and the MCP server in containers.
+
+**Prerequisites:**
+
+*   **Docker:** Install from [https://www.docker.com/](https://www.docker.com/)
+*   **Docker Compose:** Usually included with Docker Desktop.
+
+**Steps:**
+
+1.  **Clone the repository (if you haven't already).**
+2.  **(Optional) Create a `.env` file:** Copy `.env.example` to `.env` and configure environment variables if needed (e.g., `QDRANT_API_KEY` for Qdrant Cloud). **Note:** `QDRANT_URL` is automatically handled by Docker Compose for communication between the server and Qdrant containers. You can add other variables needed by the `mcp-server` here (like `EMBEDDING_MODEL`, `QDRANT_COLLECTION`).
+3.  **Build and Start Containers:** Open a terminal in the project root directory and run:
+    ```bash
+    docker compose up --build -d
+    ```
+    *   `--build`: Builds the `mcp-server` image based on the `Dockerfile`.
+    *   `-d`: Runs the containers in detached mode (in the background).
+    This command will:
+    *   Pull the `qdrant/qdrant` image if not present.
+    *   Build the `mcp-server` image.
+    *   Start containers for both Qdrant and the MCP server.
+    *   Set up a network for the containers to communicate.
+    *   Mount `./qdrant_storage` for persistent Qdrant data.
+4.  **Index Documents:** To run the indexer script *inside* the running `mcp-server` container:
+    ```bash
+    # Index files in ./docs using default settings defined in the container
+    docker compose exec mcp-server-app bun run src/indexer.ts
+
+    # Index files specifying arguments (run inside the container)
+    docker compose exec mcp-server-app bun run src/indexer.ts /app/docs my_collection Xenova/bge-small-en-v1.5
+    ```
+    *   Remember that file paths (like `/app/docs`) are relative to the *container's* filesystem (`/app` is the WORKDIR defined in the `Dockerfile`). If you need to index files from your host machine, you might need to mount additional volumes in `docker-compose.yml`.
+    *   Environment variables from your `.env` file should be automatically picked up by the `mcp-server` container if defined under its `environment` section in `docker-compose.yml`.
+5.  **The MCP Server is Running:** The `docker compose up` command already started the MCP server as defined in the `Dockerfile` (`CMD ["bun", "run", "mcp-server"]`). It's accessible via `docker compose exec` for stdio communication.
+6.  **Connect with Cursor:**
+    *   Follow the previous instructions for connecting Cursor, but use the following `stdio` command:
+    ```json
+    {
+      "cursor.mcp.servers": [
+        {
+          "name": "Fuel MCP Server (Docker)",
+          "type": "stdio",
+          "command": "docker compose exec -T mcp-server-app bun run mcp-server",
+          "cwd": "/Users/nickalexander/Github/fuel-mcp-server" // <-- IMPORTANT: Use the ABSOLUTE path to your project on your HOST machine
+        }
+        // ... other servers
+      ]
+    }
+    ```
+    *   Replace `/Users/nickalexander/Github/fuel-mcp-server` with the actual absolute path to your project directory where the `docker-compose.yml` file resides. The `cwd` tells Cursor where to run the `docker compose exec` command from.
+7.  **Stop Containers:** To stop and remove the containers, network, and volumes defined in `docker-compose.yml`:
+    ```bash
+    docker compose down
+    ```
+    To stop without removing:
+    ```bash
+    docker compose stop
+    ```
+
 ## Installation
 
 1.  **Clone the repository.**
