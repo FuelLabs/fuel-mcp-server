@@ -111,7 +111,6 @@ server.tool("searchFuelDocs", {
 // Start the server using Stdio transport
 async function startServer() {
     try {
-        await ensureQdrantIsRunning();
         const transport = new StdioServerTransport();
         log("Connecting MCP server via stdio...");
         await server.connect(transport);
