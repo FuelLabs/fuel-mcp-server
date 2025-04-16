@@ -4,14 +4,21 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { queryDocs, log } from "./query"; // Adjust path if necessary
 import { env } from '@xenova/transformers';
-import { spawn, execSync } from 'child_process';
+import { spawn, exec } from 'child_process';
 import net from 'net';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
+import { promisify } from 'util';
+
+// Promisify exec for easier async/await usage
+const execAsync = promisify(exec);
 
 // Disable local cache for transformers.js models, needed by queryDocs dependencies
 env.cacheDir = '';
+
+// Promise to track Qdrant readiness (clone + docker start)
+let qdrantReadyPromise: Promise<void> | null = null;
 
 const server = new McpServer({
   name: "FuelMCPServer",
@@ -30,8 +37,27 @@ server.tool(
   async ({ query, collectionName, modelName, nResults }) => {
     log(`MCP Tool 'searchFuelDocs' called with query: "${query}"`);
     
-    // Ensure Qdrant is running *before* executing the query logic
-    // await ensureQdrantIsRunning(); // Removed: Now called non-blocking in startServer
+    // --- Wait for Qdrant to be ready before proceeding ---
+    if (!qdrantReadyPromise) {
+       log("Error: Qdrant initialization was not started.");
+       return {
+         content: [{ type: "text", text: "Error: Qdrant initialization process not found." }],
+         isError: true
+       };
+    }
+    try {
+        log("Waiting for Qdrant readiness...");
+        await qdrantReadyPromise;
+        log("Qdrant is ready. Proceeding with query.");
+    } catch (initError: any) {
+        log(`Error during Qdrant initialization: ${initError?.message}`);
+        console.error("Qdrant initialization failed:", initError);
+         return {
+           content: [{ type: "text", text: `Error waiting for Qdrant initialization: ${initError?.message}` }],
+           isError: true
+         };
+    }
+    // --- End Qdrant Readiness Check ---
 
     const executeQuery = async () => {
       return await queryDocs(
@@ -67,59 +93,16 @@ server.tool(
       };
     } catch (err: unknown) {
       const error = err as Error;
-      console.error(`Initial error in searchFuelDocs tool: ${error.message}`);
-
-      // Check if it's a connection error and attempt restart/retry
-      if (error.message.includes("Unable to connect")) {
-        log("Qdrant connection error detected. Attempting to ensure Qdrant is running...");
-        try {
-          await ensureQdrantIsRunning();
-          // Wait a bit for Qdrant to potentially start up
-          log("Waiting 5 seconds for Qdrant to initialize...");
-          await new Promise(resolve => setTimeout(resolve, 5000)); 
-          
-          log("Retrying queryDocs call...");
-          const results = await executeQuery(); // Retry the query
-
-          // Format results again after successful retry
-           const formattedResults = Array.isArray(results)
-            ? results.map((hit: any) => {
-                const payload = hit.payload || {};
-                const score = hit.score;
-                const content = payload.content || 'No content found'; 
-                const source = payload.source || 'unknown';
-                return `Source: ${source}\\nScore: ${score?.toFixed(4)}\\nContent:\\n${content}\\n---`;
-              }).join('\\n\\n')
-            : JSON.stringify(results, null, 2);
-
-          return {
-            content: [{
-              type: "text",
-              text: `Search Results for "${query}" (after retry):\\n\\n${formattedResults}`
-            }]
-          };
-        } catch (retryErr: unknown) {
-          const retryError = retryErr as Error;
-          console.error(`Error in searchFuelDocs tool after retry: ${retryError.message}`);
-          // If retry fails, return the retry error message
-          return {
-            content: [{
-              type: "text",
-              text: `Error executing search after retry: ${retryError.message}`
-            }],
-            isError: true // Indicate that an error occurred
-          };
-        }
-      } else {
-        // If it wasn't a connection error, return the original error message
-         return {
-          content: [{
-            type: "text",
-            text: `Error executing search: ${error.message}`
-          }],
-          isError: true // Indicate that an error occurred
-        };
-      }
+      console.error(`Error in searchFuelDocs tool: ${error.message}`);
+      // No need for the connection retry logic here anymore,
+      // as qdrantReadyPromise should handle ensuring it's running.
+      return {
+        content: [{
+          type: "text",
+          text: `Error executing search: ${error.message}`
+        }],
+        isError: true // Indicate that an error occurred
+      };
     }
   }
 );
@@ -127,14 +110,16 @@ server.tool(
 // Start the server using Stdio transport
 async function startServer() {
   try {
-    // Start Qdrant check/startup in the background, don't wait for it
-    ensureQdrantIsRunning(); 
-    log("Initiated Qdrant check/startup.");
+    // Initiate Qdrant check/startup in the background, don't wait for it here
+    // The qdrantReadyPromise will track its completion.
+    ensureQdrantIsRunning();
+    log("Initiated Qdrant check/startup in background.");
 
     const transport = new StdioServerTransport();
     console.log("Connecting MCP server via stdio...");
+    // Connect should now happen quickly without being blocked by clone/docker
     await server.connect(transport);
-    console.log("MCP Server connected and ready.");
+    console.log("MCP Server connected and ready (Qdrant initialization may still be in progress).");
   } catch (error) {
     console.error("Failed to start MCP server:", error);
     process.exit(1);
@@ -149,80 +134,100 @@ function isPortInUse(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const server = net.createServer();
     server.once('error', (err: any) => {
-      if (err.code === 'EADDRINUSE') {
-        resolve(true); // Port is already in use
-      } else {
-        // Ignore other errors (like permission errors)
-        resolve(false);
-      }
+      resolve(err.code === 'EADDRINUSE');
     });
     server.once('listening', () => {
-      server.close(() => {
-        resolve(false); // Port is free
-      });
+      server.close(() => resolve(false));
     });
     server.listen(port);
   });
 }
 
-// Function to ensure Qdrant is running
-async function ensureQdrantIsRunning() {
-  const qdrantPort = 6333;
-  const isRunning = await isPortInUse(qdrantPort);
+// Function to ensure Qdrant is running (Modified for async operation)
+function ensureQdrantIsRunning() {
+    // Create the promise that the tool will wait on.
+    // This entire async IIFE is assigned to qdrantReadyPromise
+    qdrantReadyPromise = (async () => {
+        const qdrantPort = 6333;
+        const tempRepoPath = path.join(os.tmpdir(), 'fuel-mcp-server');
+        let needsClone = false;
 
-  // Define the path for the cloned repo in the temp directory
-  const tempRepoPath = path.join(os.tmpdir(), 'fuel-mcp-server');
-  log(`Checking for Fuel MCP server repo at: ${tempRepoPath}`);
+        log(`Checking for Fuel MCP server repo at: ${tempRepoPath}`);
+        try {
+            await fs.access(tempRepoPath);
+            log(`Directory ${tempRepoPath} already exists.`);
+        } catch (error) {
+            log(`Directory ${tempRepoPath} not found. Will clone repository.`);
+            needsClone = true;
+        }
 
-  try {
-    await fs.access(tempRepoPath); // Check if directory exists
-    log(`Directory ${tempRepoPath} already exists.`);
-  } catch (error) {
-    // Directory does not exist, clone it (shallow clone for speed)
-    log(`Directory ${tempRepoPath} not found. Cloning repository (shallow clone)...`);
-    try {
-      // Use execSync to clone the repository synchronously with --depth 1
-      const startTime = Date.now();
-      execSync(`git clone --depth 1 https://github.com/FuelLabs/fuel-mcp-server ${tempRepoPath}`, { stdio: 'inherit' }); // 'inherit' shows git output
-      const duration = Date.now() - startTime;
-      log(`Repository cloned successfully to ${tempRepoPath} in ${duration}ms`);
-    } catch (cloneError) {
-      console.error(`Failed to clone repository: ${cloneError}`);
-      // Decide how to handle cloning failure (e.g., exit, throw)
-      throw new Error(`Failed to clone repository into ${tempRepoPath}`);
-    }
-  }
+        if (needsClone) {
+            log(`Cloning repository (shallow clone)...`);
+            try {
+                const startTime = Date.now();
+                // Use asynchronous exec
+                await execAsync(`git clone --depth 1 https://github.com/FuelLabs/fuel-mcp-server ${tempRepoPath}`);
+                const duration = Date.now() - startTime;
+                log(`Repository cloned successfully to ${tempRepoPath} in ${duration}ms`);
+            } catch (cloneError) {
+                console.error(`Failed to clone repository: ${cloneError}`);
+                throw new Error(`Failed to clone repository into ${tempRepoPath}`); // Reject the promise
+            }
+        }
 
-  if (isRunning) {
-    log(`Port ${qdrantPort} is already in use. Assuming Qdrant is running.`);
-    return;
-  }
+        // --- Start Qdrant Docker ---
+        const isRunning = await isPortInUse(qdrantPort);
+        if (isRunning) {
+            log(`Port ${qdrantPort} is already in use. Assuming Qdrant is running.`);
+            return; // Qdrant already running, promise resolves
+        }
 
-  log('Qdrant not detected, attempting to start via Docker...');
-  const dockerCommand = 'docker';
-  // Construct the correct volume path using the temp directory
-  const volumeMountPath = `${tempRepoPath}/qdrant_storage:/qdrant/storage`;
-  log(`Using volume mount: ${volumeMountPath}`);
+        log('Qdrant not detected, attempting to start via Docker...');
+        const dockerCommand = 'docker';
+        const volumeMountPath = `${tempRepoPath}/qdrant_storage:/qdrant/storage`;
+        log(`Using volume mount: ${volumeMountPath}`);
+        const dockerArgs = [
+            'run', '-p', `${qdrantPort}:${qdrantPort}`, '-v', volumeMountPath,
+            // Add --rm so the container is removed when stopped (optional but good practice)
+            '--rm',
+            // Give the container a name for easier management (optional)
+            '--name', 'fuel-mcp-qdrant',
+            'qdrant/qdrant',
+        ];
 
-  const dockerArgs = [
-    'run',
-    '-p',
-    `${qdrantPort}:${qdrantPort}`,
-    '-v',
-    volumeMountPath,
-    'qdrant/qdrant',
-  ];
+        try {
+            log('Attempting to start Qdrant Docker container...');
+            // Spawn remains suitable for detached processes
+            const qdrantProcess = spawn(dockerCommand, dockerArgs, {
+                detached: true,
+                stdio: 'ignore'
+            });
+            qdrantProcess.unref();
+            log('Qdrant Docker container start command issued.');
 
-  try {
-    const qdrantProcess = spawn(dockerCommand, dockerArgs, {
-      detached: true, // Run in background
-      stdio: 'ignore'   // Detach stdio
+            // --- Add a simple readiness check ---
+            // Wait a few seconds and check the port again
+            log('Waiting 5 seconds for Qdrant container to initialize...');
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            const isNowRunning = await isPortInUse(qdrantPort);
+            if (isNowRunning) {
+                log('Qdrant container appears to be running.');
+            } else {
+                 log('Warning: Qdrant container did not become available on port 6333 after 5 seconds.');
+                 // Consider throwing an error here if Qdrant is strictly required
+                 // throw new Error('Qdrant container failed to start.');
+            }
+            // --- End readiness check ---
+
+        } catch (dockerError) {
+            console.error('Failed to start Qdrant Docker container:', dockerError);
+            throw new Error('Failed to start Qdrant Docker container'); // Reject the promise
+        }
+    })(); // Immediately invoke the async IIFE
+
+    // Handle unhandled rejections for the promise globally (optional but good practice)
+    qdrantReadyPromise?.catch(error => {
+        console.error("Unhandled error during Qdrant initialization:", error);
+        // Potentially exit or signal critical failure
     });
-    qdrantProcess.unref(); // Allow parent process to exit independently
-    log('Qdrant Docker container start command issued.');
-    // Note: Container might take a few seconds to become fully available.
-  } catch (error) {
-    console.error('Failed to start Qdrant Docker container:', error);
-    // Consider adding more robust error handling or user feedback here.
-  }
 } 
