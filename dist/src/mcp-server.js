@@ -22,7 +22,7 @@ server.tool("searchFuelDocs", {
     modelName: z.string().optional().describe("Optional: Specify the embedding model name."),
     nResults: z.number().int().positive().optional().describe("Optional: Specify the number of search results (default 5).")
 }, async ({ query, collectionName, modelName, nResults }) => {
-    log(`MCP Tool 'searchFuelDocs' called with query: "${query}"`);
+    console.log(`MCP Tool 'searchFuelDocs' called with query: "${query}"`);
     // Ensure Qdrant is running *before* executing the query logic
     await ensureQdrantIsRunning();
     const executeQuery = async () => {
