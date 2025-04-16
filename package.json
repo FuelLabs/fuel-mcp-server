@@ -7,7 +7,7 @@
     "fuel-mcp-server": "./dist/src/mcp-server.js"
   },
   "scripts": {
-    "build": "tsc && mkdir -p bin/napi-v3/darwin/arm64 && cp node_modules/onnxruntime-node/bin/napi-v3/darwin/arm64/* bin/napi-v3/darwin/arm64/ && mkdir -p build/Release && cp node_modules/sharp/build/Release/sharp-darwin-arm64v8.node build/Release/ && cp -r node_modules/sharp/vendor ./vendor && bun run build:post",
+    "build": "tsc && node postbuild.cjs && mkdir -p bin/napi-v3/darwin/arm64 && cp node_modules/onnxruntime-node/bin/napi-v3/darwin/arm64/* bin/napi-v3/darwin/arm64/ && mkdir -p build/Release && cp node_modules/sharp/build/Release/sharp-darwin-arm64v8.node build/Release/ && cp -r node_modules/sharp/vendor ./vendor",
     "build:post": "node postbuild.cjs",
     "mcp-server": "bun run dist/src/mcp-server.js",
     "index": "bun run src/indexer.ts",
@@ -16,8 +16,9 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "vitest": "^3.1.1",
-    "typescript": "^5"
+    "esbuild": "^0.25.2",
+    "typescript": "^5",
+    "vitest": "^3.1.1"
   },
   "peerDependencies": {
     "typescript": "^5"

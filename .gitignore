@@ -8,6 +8,9 @@ out
 # code coverage
 coverage
 *.lcov
+bin
+build
+vendor
 
 # logs
 logs

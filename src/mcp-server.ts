@@ -14,6 +14,26 @@ import { promisify } from 'util';
 // Promisify exec for easier async/await usage
 const execAsync = promisify(exec);
 
+// --- Argument Parsing ---
+let localRepoPath: string | undefined = undefined;
+const repoArgIndex = process.argv.indexOf('--repo');
+if (repoArgIndex > -1 && process.argv.length > repoArgIndex + 1) {
+    const providedPath = process.argv[repoArgIndex + 1];
+    // Ensure providedPath exists before using it
+    if (providedPath && path.isAbsolute(providedPath)) {
+        localRepoPath = providedPath;
+        log(`Using local repository path from --repo argument: ${localRepoPath}`);
+    } else if (providedPath) { // If path provided but not absolute
+        console.warn(`Warning: Provided --repo path "${providedPath}" is not absolute. Ignoring --repo argument. Please provide an absolute path.`);
+        // Optionally, exit here:
+        // console.error("Error: --repo path must be absolute.");
+        // process.exit(1);
+    } else { // If --repo was the last argument
+         console.warn(`Warning: Missing path argument after --repo. Ignoring --repo flag.`);
+    }
+}
+// --- End Argument Parsing ---
+
 // Disable local cache for transformers.js models, needed by queryDocs dependencies
 env.cacheDir = '';
 
@@ -110,9 +130,8 @@ server.tool(
 // Start the server using Stdio transport
 async function startServer() {
   try {
-    // Initiate Qdrant check/startup in the background, don't wait for it here
-    // The qdrantReadyPromise will track its completion.
-    ensureQdrantIsRunning();
+    // Initiate Qdrant check/startup in the background, pass localRepoPath
+    ensureQdrantIsRunning(localRepoPath);
     log("Initiated Qdrant check/startup in background.");
 
     const transport = new StdioServerTransport();
@@ -143,37 +162,69 @@ function isPortInUse(port: number): Promise<boolean> {
   });
 }
 
-// Function to ensure Qdrant is running (Modified for async operation)
-function ensureQdrantIsRunning() {
+// Function to ensure Qdrant is running (Modified for async operation and local repo)
+function ensureQdrantIsRunning(localRepoPath?: string) {
     // Create the promise that the tool will wait on.
     // This entire async IIFE is assigned to qdrantReadyPromise
     qdrantReadyPromise = (async () => {
         const qdrantPort = 6333;
         const tempRepoPath = path.join(os.tmpdir(), 'fuel-mcp-server');
-        let needsClone = false;
+        let needsSetup = false; // Use this flag to determine if clone/copy is needed
+        let tmpDirDidExist = false;
 
-        log(`Checking for Fuel MCP server repo at: ${tempRepoPath}`);
+        log(`Checking for Fuel MCP server setup at: ${tempRepoPath}`);
         try {
             await fs.access(tempRepoPath);
-            log(`Directory ${tempRepoPath} already exists.`);
+            tmpDirDidExist = true;
+            log(`Directory ${tempRepoPath} already exists. Skipping repository setup.`);
         } catch (error) {
-            log(`Directory ${tempRepoPath} not found. Will clone repository.`);
-            needsClone = true;
-        }
-
-        if (needsClone) {
-            log(`Cloning repository (shallow clone)...`);
+            log(`Directory ${tempRepoPath} not found. Repository setup required.`);
+            needsSetup = true;
+            // Try creating the temp directory needed for copy/clone
             try {
-                const startTime = Date.now();
-                // Use asynchronous exec
-                await execAsync(`git clone --depth 1 https://github.com/FuelLabs/fuel-mcp-server ${tempRepoPath}`);
-                const duration = Date.now() - startTime;
-                log(`Repository cloned successfully to ${tempRepoPath} in ${duration}ms`);
-            } catch (cloneError) {
-                console.error(`Failed to clone repository: ${cloneError}`);
-                throw new Error(`Failed to clone repository into ${tempRepoPath}`); // Reject the promise
+                await fs.mkdir(tempRepoPath, { recursive: true });
+                log(`Created temporary directory: ${tempRepoPath}`);
+            } catch (mkdirError) {
+                 console.error(`Failed to create temporary directory ${tempRepoPath}:`, mkdirError);
+                 throw new Error(`Failed to create temporary directory ${tempRepoPath}`);
             }
         }
+
+        if (needsSetup) {
+            const startTime = Date.now();
+            if (localRepoPath && !tmpDirDidExist) {
+                // --- Copy local repo ---
+                log(`Using local repository path provided: ${localRepoPath}`);
+                try {
+                    // Check if source exists before attempting copy
+                    await fs.access(localRepoPath);
+                    log(`Copying repository from ${localRepoPath} to ${tempRepoPath}...`);
+                    // Use fs.cp for recursive copying (Requires Node.js >= 16.7.0)
+                    await fs.cp(localRepoPath, tempRepoPath, { recursive: true });
+                    const duration = Date.now() - startTime;
+                    log(`Repository copied successfully from local path to ${tempRepoPath} in ${duration}ms`);
+                } catch (copyError: any) {
+                    console.error(`Failed to access or copy local repository from ${localRepoPath}: ${copyError.message}`);
+                    // Attempt to clean up partially created directory
+                    try { await fs.rm(tempRepoPath, { recursive: true, force: true }); } catch (_) {}
+                    throw new Error(`Failed to setup repository from local path ${localRepoPath}`); // Reject the promise
+                }
+            } else {
+                // --- Clone from GitHub ---
+                log(`Cloning repository (shallow clone) from GitHub into ${tempRepoPath}...`);
+                try {
+                    await execAsync(`git clone --depth 1 https://github.com/FuelLabs/fuel-mcp-server ${tempRepoPath}`);
+                    const duration = Date.now() - startTime;
+                    log(`Repository cloned successfully to ${tempRepoPath} in ${duration}ms`);
+                } catch (cloneError) {
+                    console.error(`Failed to clone repository: ${cloneError}`);
+                     // Attempt to clean up partially created directory
+                    try { await fs.rm(tempRepoPath, { recursive: true, force: true }); } catch (_) {}
+                    throw new Error(`Failed to clone repository into ${tempRepoPath}`); // Reject the promise
+                }
+            }
+        }
+        // If needsSetup was false, we skip cloning/copying entirely
 
         // --- Start Qdrant Docker ---
         const isRunning = await isPortInUse(qdrantPort);

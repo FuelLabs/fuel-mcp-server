@@ -4,6 +4,33 @@ This project provides a Multi-Component Protocol (MCP) server specifically desig
 
 This server indexes Fuel and Sway documentation (including markdown files) into a Qdrant vector database using open-source embeddings (via Transformers.js). This allows for powerful semantic search capabilities directly within the development environment.
 
+## Quick Install
+
+```bash
+# Install qdrant
+docker pull qdrant/qdrant
+
+# Git clone the repo
+git clone --depth 1 https://github.com/FuelLabs/fuel-mcp-server
+
+# Get the path of the repo
+realpath fuel-mcp-server
+```
+
+Edit your `mcp.json`
+```json
+{
+  "mcpServers": {
+    "fuel-sever": {
+      "command": "node",
+      "args": [
+        "{real path to fuel-mcp-server}/dist/src/mcp-server.js"
+      ]
+    }
+  }
+}
+```
+
 ## Project Structure
 
 ```
@@ -30,7 +57,7 @@ This server indexes Fuel and Sway documentation (including markdown files) into 
 └── README.md
 ```
 
-## Prerequisites
+## Development Prerequisites
 
 *   **Bun:** Install from [https://bun.sh/](https://bun.sh/)
 *   **QdrantDB:** A running instance is required. The easiest way is using Docker:
@@ -89,7 +116,7 @@ This project includes a `docker-compose.yml` file to easily run both the Qdrant 
         {
           "name": "Fuel MCP Server (Docker)",
           "type": "stdio",
-          "command": "docker compose exec -T mcp-server-app bun run mcp-server",
+          "command": "docker compose exec -T mcp-server bun run mcp-server",
           "cwd": "/Users/nickalexander/Github/fuel-mcp-server" // <-- IMPORTANT: Use the ABSOLUTE path to your project on your HOST machine
         }
         // ... other servers

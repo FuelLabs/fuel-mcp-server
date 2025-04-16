@@ -17,4 +17,4 @@ COPY . .
 EXPOSE 8080 
 
 # Command to run the application
-CMD ["bun", "run", "mcp-server"] 
+CMD ["bun", "run", "mcp-server"]
