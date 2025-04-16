@@ -4,9 +4,11 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { queryDocs, log } from "./query.js"; // Adjust path if necessary
 import { env } from '@xenova/transformers';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import net from 'net';
-import { promises as fs } from 'fs';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
 // Disable local cache for transformers.js models, needed by queryDocs dependencies
 env.cacheDir = '';
 const server = new McpServer({
@@ -147,17 +149,26 @@ function isPortInUse(port) {
 async function ensureQdrantIsRunning() {
     const qdrantPort = 6333;
     const isRunning = await isPortInUse(qdrantPort);
-    // List files in the current directory
+    // Define the path for the cloned repo in the temp directory
+    const tempRepoPath = path.join(os.tmpdir(), 'fuel-mcp-server');
+    log(`Checking for Fuel MCP server repo at: ${tempRepoPath}`);
     try {
-        const files = await fs.readdir(process.cwd()); // Get files in the current working directory
-        log(`cwd Files in ${process.cwd()}:
- ${files.join('\n ')}`); // Log the files, ensuring newline separation
-        const files2 = await fs.readdir('./'); // Get files in the current working directory
-        log(`cwd Files in ${'./'}:
-  ${files2.join('\n ')}`); // Log the files, ensuring newline separation
+        await fs.access(tempRepoPath); // Check if directory exists
+        log(`Directory ${tempRepoPath} already exists.`);
     }
-    catch (err) {
-        console.error('Error reading directory:', err);
+    catch (error) {
+        // Directory does not exist, clone it
+        log(`Directory ${tempRepoPath} not found. Cloning repository...`);
+        try {
+            // Use execSync to clone the repository synchronously
+            execSync(`git clone https://github.com/FuelLabs/fuel-mcp-server ${tempRepoPath}`, { stdio: 'inherit' }); // 'inherit' shows git output
+            log(`Repository cloned successfully to ${tempRepoPath}`);
+        }
+        catch (cloneError) {
+            console.error(`Failed to clone repository: ${cloneError}`);
+            // Decide how to handle cloning failure (e.g., exit, throw)
+            throw new Error(`Failed to clone repository into ${tempRepoPath}`);
+        }
     }
     if (isRunning) {
         log(`Port ${qdrantPort} is already in use. Assuming Qdrant is running.`);
@@ -165,12 +176,15 @@ async function ensureQdrantIsRunning() {
     }
     log('Qdrant not detected, attempting to start via Docker...');
     const dockerCommand = 'docker';
+    // Construct the correct volume path using the temp directory
+    const volumeMountPath = `${tempRepoPath}/qdrant_storage:/qdrant/storage`;
+    log(`Using volume mount: ${volumeMountPath}`);
     const dockerArgs = [
         'run',
         '-p',
         `${qdrantPort}:${qdrantPort}`,
         '-v',
-        `${process.cwd()}/fuel-mcp-server/qdrant_storage:/qdrant/storage`,
+        volumeMountPath, // Use the updated path
         'qdrant/qdrant',
     ];
     try {
