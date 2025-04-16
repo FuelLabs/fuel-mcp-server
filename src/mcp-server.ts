@@ -186,7 +186,7 @@ async function ensureQdrantIsRunning() {
     '-p',
     `${qdrantPort}:${qdrantPort}`,
     '-v',
-    `${process.cwd()}/qdrant_storage:/qdrant/storage`,
+    `${process.cwd()}/fuel-mcp-server/qdrant_storage:/qdrant/storage`,
     'qdrant/qdrant',
   ];
 
