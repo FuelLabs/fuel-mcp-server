@@ -6,6 +6,7 @@ import { queryDocs, log } from "./query.js"; // Adjust path if necessary
 import { env } from '@xenova/transformers';
 import { spawn } from 'child_process';
 import net from 'net';
+import { promises as fs } from 'fs';
 // Disable local cache for transformers.js models, needed by queryDocs dependencies
 env.cacheDir = '';
 const server = new McpServer({
@@ -146,11 +147,15 @@ function isPortInUse(port) {
 async function ensureQdrantIsRunning() {
     const qdrantPort = 6333;
     const isRunning = await isPortInUse(qdrantPort);
-    const ls = spawn('ls', ['-l']); // '-l' for detailed listing, adjust as needed
-    // Handle output from the command
-    ls.stdout.on('data', (data) => {
-        log(`Files:\n ${data}`);
-    });
+    // List files in the current directory
+    try {
+        const files = await fs.readdir(process.cwd()); // Get files in the current working directory
+        log(`Files in ${process.cwd()}:
+ ${files.join('\n ')}`); // Log the files, ensuring newline separation
+    }
+    catch (err) {
+        console.error('Error reading directory:', err);
+    }
     if (isRunning) {
         log(`Port ${qdrantPort} is already in use. Assuming Qdrant is running.`);
         return;
