@@ -115,7 +115,7 @@ async function startServer() {
         ensureQdrantIsRunning();
         log("Initiated Qdrant check/startup.");
         const transport = new StdioServerTransport();
-        log("Connecting MCP server via stdio...");
+        console.log("Connecting MCP server via stdio...");
         await server.connect(transport);
         console.log("MCP Server connected and ready.");
     }
@@ -159,12 +159,14 @@ async function ensureQdrantIsRunning() {
         log(`Directory ${tempRepoPath} already exists.`);
     }
     catch (error) {
-        // Directory does not exist, clone it
-        log(`Directory ${tempRepoPath} not found. Cloning repository...`);
+        // Directory does not exist, clone it (shallow clone for speed)
+        log(`Directory ${tempRepoPath} not found. Cloning repository (shallow clone)...`);
         try {
-            // Use execSync to clone the repository synchronously
-            execSync(`git clone https://github.com/FuelLabs/fuel-mcp-server ${tempRepoPath}`, { stdio: 'inherit' }); // 'inherit' shows git output
-            log(`Repository cloned successfully to ${tempRepoPath}`);
+            // Use execSync to clone the repository synchronously with --depth 1
+            const startTime = Date.now();
+            execSync(`git clone --depth 1 https://github.com/FuelLabs/fuel-mcp-server ${tempRepoPath}`, { stdio: 'inherit' }); // 'inherit' shows git output
+            const duration = Date.now() - startTime;
+            log(`Repository cloned successfully to ${tempRepoPath} in ${duration}ms`);
         }
         catch (cloneError) {
             console.error(`Failed to clone repository: ${cloneError}`);
@@ -186,7 +188,7 @@ async function ensureQdrantIsRunning() {
         '-p',
         `${qdrantPort}:${qdrantPort}`,
         '-v',
-        volumeMountPath, // Use the updated path
+        volumeMountPath,
         'qdrant/qdrant',
     ];
     try {
@@ -195,11 +197,11 @@ async function ensureQdrantIsRunning() {
             stdio: 'ignore' // Detach stdio
         });
         qdrantProcess.unref(); // Allow parent process to exit independently
-        log('Qdrant Docker container started in the background.');
+        log('Qdrant Docker container start command issued.');
+        // Note: Container might take a few seconds to become fully available.
     }
     catch (error) {
         console.error('Failed to start Qdrant Docker container:', error);
-        // Decide if you want to exit the process or continue without Qdrant
-        // process.exit(1);
+        // Consider adding more robust error handling or user feedback here.
     }
 }
