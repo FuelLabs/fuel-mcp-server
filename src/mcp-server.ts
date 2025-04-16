@@ -124,6 +124,7 @@ server.tool(
 // Start the server using Stdio transport
 async function startServer() {
   try {
+    await ensureQdrantIsRunning();
     const transport = new StdioServerTransport();
     log("Connecting MCP server via stdio...");
     await server.connect(transport);
@@ -163,6 +164,13 @@ async function ensureQdrantIsRunning() {
   const qdrantPort = 6333;
   const isRunning = await isPortInUse(qdrantPort);
 
+  const ls = spawn('ls', ['-l']); // '-l' for detailed listing, adjust as needed
+
+  // Handle output from the command
+  ls.stdout.on('data', (data) => {
+    log(`Files:\n ${data}`);
+  });
+
   if (isRunning) {
     log(`Port ${qdrantPort} is already in use. Assuming Qdrant is running.`);
     return;
@@ -176,7 +184,7 @@ async function ensureQdrantIsRunning() {
     `${qdrantPort}:${qdrantPort}`,
     '-v',
     `${process.cwd()}/qdrant_storage:/qdrant/storage`,
-    'qdrant/qdrant'
+    'qdrant/qdrant',
   ];
 
   try {
