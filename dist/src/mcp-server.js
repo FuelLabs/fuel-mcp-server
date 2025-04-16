@@ -22,9 +22,9 @@ server.tool("searchFuelDocs", {
     modelName: z.string().optional().describe("Optional: Specify the embedding model name."),
     nResults: z.number().int().positive().optional().describe("Optional: Specify the number of search results (default 5).")
 }, async ({ query, collectionName, modelName, nResults }) => {
-    console.log(`MCP Tool 'searchFuelDocs' called with query: "${query}"`);
+    log(`MCP Tool 'searchFuelDocs' called with query: "${query}"`);
     // Ensure Qdrant is running *before* executing the query logic
-    await ensureQdrantIsRunning();
+    // await ensureQdrantIsRunning(); // Removed: Now called non-blocking in startServer
     const executeQuery = async () => {
         return await queryDocs(query, collectionName, // Will use default if undefined
         modelName, // Will use default if undefined
@@ -111,10 +111,13 @@ server.tool("searchFuelDocs", {
 // Start the server using Stdio transport
 async function startServer() {
     try {
+        // Start Qdrant check/startup in the background, don't wait for it
+        ensureQdrantIsRunning();
+        log("Initiated Qdrant check/startup.");
         const transport = new StdioServerTransport();
         log("Connecting MCP server via stdio...");
         await server.connect(transport);
-        log("MCP Server connected and ready.");
+        console.log("MCP Server connected and ready.");
     }
     catch (error) {
         console.error("Failed to start MCP server:", error);
