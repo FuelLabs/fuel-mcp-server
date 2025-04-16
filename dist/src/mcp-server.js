@@ -150,8 +150,11 @@ async function ensureQdrantIsRunning() {
     // List files in the current directory
     try {
         const files = await fs.readdir(process.cwd()); // Get files in the current working directory
-        log(`Files in ${process.cwd()}:
+        log(`cwd Files in ${process.cwd()}:
  ${files.join('\n ')}`); // Log the files, ensuring newline separation
+        const files2 = await fs.readdir('./'); // Get files in the current working directory
+        log(`cwd Files in ${'./'}:
+  ${files2.join('\n ')}`); // Log the files, ensuring newline separation
     }
     catch (err) {
         console.error('Error reading directory:', err);
@@ -167,7 +170,7 @@ async function ensureQdrantIsRunning() {
         '-p',
         `${qdrantPort}:${qdrantPort}`,
         '-v',
-        `${process.cwd()}/qdrant_storage:/qdrant/storage`,
+        `${process.cwd()}/fuel-mcp-server/qdrant_storage:/qdrant/storage`,
         'qdrant/qdrant',
     ];
     try {
