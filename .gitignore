@@ -12,6 +12,7 @@ bin
 build
 vendor
 dist
+Xenova
 
 # logs
 logs
