@@ -4,6 +4,12 @@ This project provides a Multi-Component Protocol (MCP) server specifically desig
 
 This server indexes Fuel and Sway documentation (including markdown files) into a Qdrant vector database using open-source embeddings (via Transformers.js). This allows for powerful semantic search capabilities directly within the development environment.
 
+## Features
+- Makes the entire docs.fuel.network content locally searchable to agents
+- Hybrid search (RAG + keyword via qdrant)
+- qdrant db can be hosted for remote LLMs
+- Contains the scripts to index new docs
+
 ## Quick Install
 
 ```bash
