@@ -14,7 +14,7 @@ services:
 
   mcp-server:
     build: .
-    container_name: mcp-server-app
+    container_name: fuel-mcp-server
     depends_on:
       - qdrant
     environment:
@@ -26,5 +26,7 @@ services:
     # Keep stdin open for stdio transport
     stdin_open: true 
     # Allocate a pseudo-TTY for interaction if needed
-    tty: true 
-    restart: unless-stopped 
+    tty: true
+    # Add the command to run when the container starts
+    command: bun run mcp-server
+    restart: unless-stopped

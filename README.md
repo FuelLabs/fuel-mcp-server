@@ -115,18 +115,20 @@ This project includes a `docker-compose.yml` file to easily run both the Qdrant 
     *   Follow the previous instructions for connecting Cursor, but use the following `stdio` command:
     ```json
     {
-      "cursor.mcp.servers": [
-        {
-          "name": "Fuel MCP Server (Docker)",
-          "type": "stdio",
-          "command": "docker compose exec -T mcp-server bun run mcp-server",
-          "cwd": "/Users/nickalexander/Github/fuel-mcp-server" // <-- IMPORTANT: Use the ABSOLUTE path to your project on your HOST machine
+      "mcpServers": {
+        "fuel-sever": {
+          "command": "docker",
+          "args": [
+            "compose",
+            "-f { replace w/ real path to fuel-mcp-server }/docker-compose.yml",
+            "exec",
+            "-T mcp-server bun run mcp-server"
+          ]
         }
-        // ... other servers
-      ]
+      }
     }
     ```
-    *   Replace `/Users/nickalexander/Github/fuel-mcp-server` with the actual absolute path to your project directory where the `docker-compose.yml` file resides. The `cwd` tells Cursor where to run the `docker compose exec` command from.
+    *   Replace `{ replace w/ real path to fuel-mcp-server }` with the actual absolute path to your project directory where the `docker-compose.yml` file resides.
 7.  **Stop Containers:** To stop and remove the containers, network, and volumes defined in `docker-compose.yml`:
     ```bash
     docker compose down
@@ -211,26 +213,6 @@ QDRANT_URL=http://your-qdrant-host:6333 QDRANT_COLLECTION=my_docs bun run mcp-se
 ```
 
 The server will connect via standard input/output (stdio) and wait for a client to connect.
-
-### Connecting with Cursor
-
-1.  **Open Cursor.**
-2.  **Open the Command Palette** (Cmd+Shift+P on macOS, Ctrl+Shift+P on Windows/Linux).
-3.  **Search for and select \"MCP: Add MCP Server via Command\".**
-4.  **Enter the command** to run the server. Since the server uses `bun run`, and Cursor needs the full path to `bun`, you'll typically need to find `bun`'s path first (`which bun` in your terminal). You also need the full path to the project directory.
-    *   **Construct the Command:**
-        *   Start with the full path to `bun`.
-        *   Add `run`.
-        *   Add the full path to the `mcp-server` script (e.g., `/path/to/fuel-mcp-server/src/mcp-server.ts`).
-        *   **(Crucial)** Prepend any required environment variables *before* the `bun` command.
-    *   **Example (replace paths and vars as needed):**
-        ```bash
-        QDRANT_COLLECTION=my_docs /path/to/your/bun run /path/to/fuel-mcp-server/src/mcp-server.ts
-        ```
-    *   **Important:** Ensure you provide the **full, absolute paths** and correctly set any **required environment variables** directly in the command string.
-5.  **Give the server a name** (e.g., \"Fuel Docs Search\") when prompted.
-
-Once connected, you should be able to use the `searchFuelDocs` tool (or whatever the MCP server exposes) via Cursor's chat or code actions.
 
 ## Implementation Details
 
