@@ -135,10 +135,10 @@ async function startServer() {
     log("Initiated Qdrant check/startup in background.");
 
     const transport = new StdioServerTransport();
-    console.log("Connecting MCP server via stdio...");
+    log("Connecting MCP server via stdio...");
     // Connect should now happen quickly without being blocked by clone/docker
     await server.connect(transport);
-    console.log("MCP Server connected and ready (Qdrant initialization may still be in progress).");
+    log("MCP Server connected and ready (Qdrant initialization may still be in progress).");
   } catch (error) {
     console.error("Failed to start MCP server:", error);
     process.exit(1);

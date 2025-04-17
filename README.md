@@ -7,24 +7,27 @@ This server indexes Fuel and Sway documentation (including markdown files) into 
 ## Quick Install
 
 ```bash
-# Install qdrant
-docker pull qdrant/qdrant
-
 # Git clone the repo
 git clone --depth 1 https://github.com/FuelLabs/fuel-mcp-server
 
-# Get the path of the repo
+# Docker compose
+docker compose -f fuel-mcp-server/docker-compose.yml up -d
+
+# Copy this
 realpath fuel-mcp-server
 ```
 
-Edit your `mcp.json`
+Edit your Cursor `mcp.json`
 ```json
 {
   "mcpServers": {
     "fuel-sever": {
-      "command": "node",
+      "command": "docker",
       "args": [
-        "{real path to fuel-mcp-server}/dist/src/mcp-server.js"
+        "compose",
+        "-f { replace w/ real path to fuel-mcp-server }/docker-compose.yml",
+        "exec",
+        "-T mcp-server bun run mcp-server"
       ]
     }
   }
