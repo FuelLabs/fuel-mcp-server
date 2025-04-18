@@ -1,0 +1,58 @@
+# Example: test/src/e2e_vm_tests/test_programs/should_pass/test_contracts/abi_with_generic_types/src/main.sw
+
+```sway
+contract;
+
+enum MyEnum<V> {
+    Foo: u64,
+    Bar: bool,
+}
+struct MyStruct<T, U> {
+    bim: T,
+    bam: MyEnum<u64>,
+}
+struct MyOtherStruct {
+    bom: u64,
+}
+
+struct MyArrayStruct<V, W> {
+    tim: [V; 3],
+    tam: [MyStruct<V, W>; 5],
+}
+
+struct MyStructWithTuple<X, Y, Z> {
+    tuple1: (X, Y, Z),
+    tuple2: (Z, X),
+}
+
+struct SomeGenericStruct<Z> {
+    b: Z,
+}
+
+abi MyContract {
+    fn complex_function(
+        arg1: MyStruct<[b256; 3], u8>,
+        arg2: [MyStruct<u64, bool>; 4],
+        arg3: (str[5], bool),
+        arg4: MyOtherStruct,
+    ) -> str[6];
+    fn take_generic_array(arg: MyArrayStruct<u8, u16>) -> u64;
+    fn take_generic_struct_containing_tuple(arg: MyStructWithTuple<SomeGenericStruct<u64>, u16, u32>);
+}
+
+impl MyContract for Contract {
+    fn complex_function(
+        _arg1: MyStruct<[b256; 3], u8>,
+        _arg2: [MyStruct<u64, bool>; 4],
+        _arg3: (str[5], bool),
+        _arg4: MyOtherStruct,
+    ) -> str[6] {
+        __to_str_array("fuel42")
+    }
+    fn take_generic_array(_arg: MyArrayStruct<u8, u16>) -> u64 {
+        0
+    }
+    fn take_generic_struct_containing_tuple(_arg: MyStructWithTuple<SomeGenericStruct<u64>, u16, u32>) {}
+}
+
+```

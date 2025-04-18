@@ -1,0 +1,33 @@
+# Example: sway_sources/sway/test/src/e2e_vm_tests/test_programs/should_pass/language/match_expressions_empty_enums/src/main.sw
+
+```sway
+script;
+
+enum MyNever {}
+
+impl MyNever {
+    fn into_any<T>(self) -> T {
+        match self {}
+    }
+
+    fn match_me(self) -> Self {
+        let e = self;
+        match e { }
+    }
+}
+
+fn result_into_ok<T>(res: Result<T, MyNever>) -> T {
+    match res {
+        Ok(t) => t,
+        // This branch can never be taken, and so the
+        // compiler is happy to treat it as evaluating
+        // to whatever type we wish - in this case, `T`.
+        Err(never) => match never {},
+    }
+}
+
+fn main() -> u64 {
+    42
+}
+
+```

@@ -228,6 +228,10 @@ export async function indexDocsQdrant(
                 continue;
             }
 
+            // Log point details before upsert attempt
+            console.log(`  - Preparing to upsert batch ${Math.floor(i / BATCH_SIZE) + 1} with ${points.length} points. Point IDs/Sources:`);
+            points.forEach(p => console.log(`    - ID: ${p.id}, Source: ${p.payload?.source}`));
+
             await client.upsert(collectionName, {
                 wait: true, // Wait for operation to complete
                 points: points as any // Cast as any to bypass stricter type check after filtering nulls

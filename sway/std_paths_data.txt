@@ -1,0 +1,413 @@
+Module std::address
+Struct std::address::Address
+Function std::alloc::alloc_bytes | pub fn alloc_bytes(count: u64) -> raw_ptr
+Function std::alloc::alloc | pub fn alloc<T>(count: u64) -> raw_ptr
+Function std::alloc::realloc_bytes | pub fn realloc_bytes(ptr: raw_ptr, count: u64, new_count: u64) -> raw_ptr
+Function std::alloc::realloc | pub fn realloc<T>(ptr: raw_ptr, count: u64, new_count: u64) -> raw_ptr
+Module std::alloc
+Function std::assert::assert_eq | pub fn assert_eq<T>(v1: T, v2: T) where T: Eq + AbiEncode,
+Function std::assert::assert_ne | pub fn assert_ne<T>(v1: T, v2: T) where T: Eq + AbiEncode,
+Function std::assert::assert | pub fn assert(condition: bool)
+Module std::assert
+Module std::asset_id
+Struct std::asset_id::AssetId
+Function std::asset::burn | pub fn burn(sub_id: SubId, amount: u64)
+Function std::asset::mint_to | pub fn mint_to(to: Identity, sub_id: SubId, amount: u64)
+Function std::asset::mint | pub fn mint(sub_id: SubId, amount: u64)
+Function std::asset::transfer | pub fn transfer(to: Identity, asset_id: AssetId, amount: u64)
+Module std::asset
+Enum std::auth::AuthError
+Function std::auth::caller_address | pub fn caller_address() -> Result<Address, AuthError>
+Function std::auth::caller_addresses | pub fn caller_addresses() -> Vec<Address>
+Function std::auth::caller_contract_id | pub fn caller_contract_id() -> ContractId
+Function std::auth::caller_is_external | pub fn caller_is_external() -> bool
+Function std::auth::msg_sender | pub fn msg_sender() -> Result<Identity, AuthError>
+Function std::auth::predicate_address | pub fn predicate_address() -> Option<Address>
+Module std::auth
+Module std::b512
+Struct std::b512::B512
+Enum std::block::BlockHashError
+Function std::block::block_header_hash | pub fn block_header_hash(block_height: u32) -> Result<b256, BlockHashError>
+Function std::block::height | pub fn height() -> u32
+Function std::block::timestamp_of_block | pub fn timestamp_of_block(block_height: u32) -> u64
+Function std::block::timestamp | pub fn timestamp() -> u64
+Module std::block
+Module std::bytes
+Struct std::bytes::Bytes
+Struct std::bytes::BytesIter
+Function std::call_frames::called_args | pub fn called_args<T>() -> T where T: AbiDecode,
+Function std::call_frames::called_method | pub fn called_method() -> str
+Function std::call_frames::code_size | pub fn code_size() -> u64
+Function std::call_frames::first_param | pub fn first_param() -> u64
+Function std::call_frames::get_contract_id_from_call_frame | pub fn get_contract_id_from_call_frame(frame_pointer: raw_ptr) -> ContractId
+Function std::call_frames::get_previous_frame_pointer | pub fn get_previous_frame_pointer(frame_pointer: raw_ptr) -> raw_ptr
+Function std::call_frames::msg_asset_id | pub fn msg_asset_id() -> AssetId
+Function std::call_frames::second_param | pub fn second_param() -> u64
+Module std::call_frames
+Module std::clone
+Trait std::clone::Clone
+Function std::codec::abi_decode_in_place | pub fn abi_decode_in_place<T>(ptr: raw_ptr, len: u64, target: raw_ptr) where T: AbiDecode,
+Function std::codec::abi_decode | pub fn abi_decode<T>(data: raw_slice) -> T where T: AbiDecode,
+Function std::codec::as_u16 | pub fn as_u16(input: u8) -> u16
+Function std::codec::as_u32 | pub fn as_u32(input: u8) -> u32
+Function std::codec::contract_call | pub fn contract_call<T, TArgs>( contract_id: b256, method_name: str, args: TArgs, coins: u64, asset_id: b256, gas: u64, ) -> T where T: AbiDecode, TArgs: AbiEncode,
+Function std::codec::decode_first_param | pub fn decode_first_param<T>() -> T where T: AbiDecode,
+Function std::codec::decode_predicate_data_by_index | pub fn decode_predicate_data_by_index<T>(index: u64) -> T where T: AbiDecode,
+Function std::codec::decode_predicate_data | pub fn decode_predicate_data<T>() -> T where T: AbiDecode,
+Function std::codec::decode_script_data | pub fn decode_script_data<T>() -> T where T: AbiDecode,
+Function std::codec::decode_second_param | pub fn decode_second_param<T>() -> T where T: AbiDecode,
+Function std::codec::encode | pub fn encode<T>(item: T) -> raw_slice where T: AbiEncode,
+Module std::codec
+Struct std::codec::Buffer
+Struct std::codec::BufferReader
+Trait std::codec::AbiDecode
+Trait std::codec::AbiEncode
+Constant std::constants::DEFAULT_SUB_ID
+Constant std::constants::ZERO_B256
+Constant std::constants::ZERO_U256
+Module std::constants
+Function std::context::balance_of | pub fn balance_of(target: ContractId, asset_id: AssetId) -> u64
+Function std::context::msg_amount | pub fn msg_amount() -> u64
+Function std::context::this_balance | pub fn this_balance(asset_id: AssetId) -> u64
+Module std::context
+Module std::contract_id
+Struct std::contract_id::ContractId
+Module std::convert
+Trait std::convert::From
+Trait std::convert::Into
+Trait std::convert::TryFrom
+Trait std::convert::TryInto
+Enum std::crypto::alt_bn128::AltBn128Error
+Function std::crypto::alt_bn128::alt_bn128_add | pub fn alt_bn128_add(point_1: Point2D, point_2: Point2D) -> Point2D
+Function std::crypto::alt_bn128::alt_bn128_mul | pub fn alt_bn128_mul(point: Point2D, scalar: Scalar) -> Point2D
+Function std::crypto::alt_bn128::alt_bn128_pairing_check | pub fn alt_bn128_pairing_check(points: Vec<(Point2D, [Point2D; 2])>) -> bool
+Module std::crypto::alt_bn128
+Module std::crypto::ed25519
+Struct std::crypto::ed25519::Ed25519
+Module std::crypto
+Module std::crypto::message
+Struct std::crypto::message::Message
+Module std::crypto::point2d
+Struct std::crypto::point2d::Point2D
+Module std::crypto::public_key
+Struct std::crypto::public_key::PublicKey
+Module std::crypto::scalar
+Struct std::crypto::scalar::Scalar
+Module std::crypto::secp256k1
+Struct std::crypto::secp256k1::Secp256k1
+Module std::crypto::secp256r1
+Struct std::crypto::secp256r1::Secp256r1
+Enum std::crypto::signature_error::SignatureError
+Module std::crypto::signature_error
+Enum std::crypto::signature::Signature
+Module std::crypto::signature
+Enum std::ecr::EcRecoverError
+Function std::ecr::ec_recover_address_r1 | pub fn ec_recover_address_r1(signature: B512, msg_hash: b256) -> Result<Address, EcRecoverError>
+Function std::ecr::ec_recover_address | pub fn ec_recover_address(signature: B512, msg_hash: b256) -> Result<Address, EcRecoverError>
+Function std::ecr::ec_recover_r1 | pub fn ec_recover_r1(signature: B512, msg_hash: b256) -> Result<B512, EcRecoverError>
+Function std::ecr::ec_recover | pub fn ec_recover(signature: B512, msg_hash: b256) -> Result<B512, EcRecoverError>
+Function std::ecr::ed_verify | pub fn ed_verify(public_key: b256, signature: B512, msg: Bytes) -> Result<bool, EcRecoverError>
+Module std::ecr
+Constant std::error_signals::FAILED_ASSERT_EQ_SIGNAL
+Constant std::error_signals::FAILED_ASSERT_NE_SIGNAL
+Constant std::error_signals::FAILED_ASSERT_SIGNAL
+Constant std::error_signals::FAILED_REQUIRE_SIGNAL
+Constant std::error_signals::FAILED_TRANSFER_TO_ADDRESS_SIGNAL
+Constant std::error_signals::REVERT_WITH_LOG_SIGNAL
+Module std::error_signals
+Function std::execution::run_external | pub fn run_external(load_target: ContractId) -> !
+Module std::execution
+Function std::external::bytecode_root | pub fn bytecode_root(contract_id: ContractId) -> b256
+Module std::external
+Constant std::flags::F_UNSAFEMATH_DISABLE_MASK
+Constant std::flags::F_UNSAFEMATH_ENABLE_MASK
+Constant std::flags::F_WRAPPING_DISABLE_MASK
+Constant std::flags::F_WRAPPING_ENABLE_MASK
+Function std::flags::disable_panic_on_overflow | pub fn disable_panic_on_overflow() -> u64
+Function std::flags::disable_panic_on_unsafe_math | pub fn disable_panic_on_unsafe_math() -> u64
+Function std::flags::enable_panic_on_overflow | pub fn enable_panic_on_overflow()
+Function std::flags::enable_panic_on_unsafe_math | pub fn enable_panic_on_unsafe_math()
+Function std::flags::panic_on_overflow_enabled | pub fn panic_on_overflow_enabled() -> bool
+Function std::flags::panic_on_unsafe_math_enabled | pub fn panic_on_unsafe_math_enabled() -> bool
+Function std::flags::set_flags | pub fn set_flags(new_flags: u64)
+Module std::flags
+Function std::hash::keccak256 | pub fn keccak256<T>(s: T) -> b256 where T: Hash,
+Function std::hash::sha256_str_array | pub fn sha256_str_array<S>(param: S) -> b256
+Function std::hash::sha256 | pub fn sha256<T>(s: T) -> b256 where T: Hash,
+Module std::hash
+Struct std::hash::Hasher
+Trait std::hash::Hash
+Enum std::identity::Identity
+Module std::identity
+Library std
+Constant std::inputs::GTF_INPUT_COIN_AMOUNT
+Constant std::inputs::GTF_INPUT_COIN_ASSET_ID
+Constant std::inputs::GTF_INPUT_COIN_OWNER
+Constant std::inputs::GTF_INPUT_COIN_PREDICATE_DATA_LENGTH
+Constant std::inputs::GTF_INPUT_COIN_PREDICATE_DATA
+Constant std::inputs::GTF_INPUT_COIN_PREDICATE_LENGTH
+Constant std::inputs::GTF_INPUT_COIN_PREDICATE
+Constant std::inputs::GTF_INPUT_COIN_WITNESS_INDEX
+Constant std::inputs::GTF_INPUT_MESSAGE_AMOUNT
+Constant std::inputs::GTF_INPUT_MESSAGE_DATA_LENGTH
+Constant std::inputs::GTF_INPUT_MESSAGE_DATA
+Constant std::inputs::GTF_INPUT_MESSAGE_NONCE
+Constant std::inputs::GTF_INPUT_MESSAGE_PREDICATE_DATA_LENGTH
+Constant std::inputs::GTF_INPUT_MESSAGE_PREDICATE_DATA
+Constant std::inputs::GTF_INPUT_MESSAGE_PREDICATE_LENGTH
+Constant std::inputs::GTF_INPUT_MESSAGE_PREDICATE
+Constant std::inputs::GTF_INPUT_MESSAGE_RECIPIENT
+Constant std::inputs::GTF_INPUT_MESSAGE_SENDER
+Constant std::inputs::GTF_INPUT_MESSAGE_WITNESS_INDEX
+Constant std::inputs::GTF_INPUT_TYPE
+Enum std::inputs::Input
+Function std::inputs::input_amount | pub fn input_amount(index: u64) -> Option<u64>
+Function std::inputs::input_asset_id | pub fn input_asset_id(index: u64) -> Option<AssetId>
+Function std::inputs::input_coin_owner | pub fn input_coin_owner(index: u64) -> Option<Address>
+Function std::inputs::input_count | pub fn input_count() -> u16
+Function std::inputs::input_message_data_length | pub fn input_message_data_length(index: u64) -> Option<u64>
+Function std::inputs::input_message_data | pub fn input_message_data(index: u64, offset: u64) -> Option<Bytes>
+Function std::inputs::input_message_nonce | pub fn input_message_nonce(index: u64) -> Option<b256>
+Function std::inputs::input_message_recipient | pub fn input_message_recipient(index: u64) -> Option<Address>
+Function std::inputs::input_message_sender | pub fn input_message_sender(index: u64) -> Option<Address>
+Function std::inputs::input_predicate_data_length | pub fn input_predicate_data_length(index: u64) -> Option<u64>
+Function std::inputs::input_predicate_data | pub fn input_predicate_data<T>(index: u64) -> Option<T> where T: AbiDecode,
+Function std::inputs::input_predicate_length | pub fn input_predicate_length(index: u64) -> Option<u64>
+Function std::inputs::input_predicate_pointer | pub fn input_predicate_pointer(index: u64) -> Option<raw_ptr>
+Function std::inputs::input_predicate | pub fn input_predicate(index: u64) -> Option<Bytes>
+Function std::inputs::input_type | pub fn input_type(index: u64) -> Option<Input>
+Function std::inputs::input_witness_index | pub fn input_witness_index(index: u64) -> Option<u16>
+Module std::inputs
+Function std::intrinsics::is_reference_type | pub fn is_reference_type<T>() -> bool
+Function std::intrinsics::size_of_val | pub fn size_of_val<T>(val: T) -> u64
+Function std::intrinsics::size_of | pub fn size_of<T>() -> u64
+Module std::intrinsics
+Module std::iterator
+Trait std::iterator::Iterator
+Function std::logging::log | pub fn log<T>(value: T) where T: AbiEncode,
+Module std::logging
+Function std::low_level_call::call_with_function_selector | pub fn call_with_function_selector( target: ContractId, function_selector: Bytes, call_data: Bytes, call_params: CallParams, )
+Module std::low_level_call
+Struct std::low_level_call::CallParams
+Module std::math
+Trait std::math::BinaryLogarithm
+Trait std::math::Exponent
+Trait std::math::Logarithm
+Trait std::math::Power
+Trait std::math::Root
+Function std::message::send_message | pub fn send_message(recipient: b256, msg_data: Bytes, coins: u64)
+Function std::message::send_typed_message | pub fn send_typed_message<T>(recipient: b256, msg_data: T, coins: u64)
+Module std::message
+Module std::ops
+Trait std::ops::Add
+Trait std::ops::BitwiseAnd
+Trait std::ops::BitwiseOr
+Trait std::ops::BitwiseXor
+Trait std::ops::Divide
+Trait std::ops::Eq
+Trait std::ops::Mod
+Trait std::ops::Multiply
+Trait std::ops::Not
+Trait std::ops::Ord
+Trait std::ops::OrdEq
+Trait std::ops::PartialEq
+Trait std::ops::Shift
+Trait std::ops::Subtract
+Trait std::ops::TotalOrd
+Enum std::option::Option
+Module std::option
+Constant std::outputs::GTF_OUTPUT_COIN_AMOUNT
+Constant std::outputs::GTF_OUTPUT_COIN_ASSET_ID
+Constant std::outputs::GTF_OUTPUT_COIN_TO
+Constant std::outputs::GTF_OUTPUT_TYPE
+Enum std::outputs::Output
+Function std::outputs::output_amount | pub fn output_amount(index: u64) -> Option<u64>
+Function std::outputs::output_asset_id_and_to | pub fn output_asset_id_and_to(index: u64) -> Option<(AssetId, Address)>
+Function std::outputs::output_asset_id | pub fn output_asset_id(index: u64) -> Option<AssetId>
+Function std::outputs::output_asset_to | pub fn output_asset_to(index: u64) -> Option<Address>
+Function std::outputs::output_count | pub fn output_count() -> u16
+Function std::outputs::output_type | pub fn output_type(index: u64) -> Option<Output>
+Module std::outputs
+Primitive std::b256
+Primitive std::bool
+Primitive std::str
+Primitive std::str[0]
+Primitive std::str[1]
+Primitive std::str[10]
+Primitive std::str[11]
+Primitive std::str[12]
+Primitive std::str[13]
+Primitive std::str[14]
+Primitive std::str[15]
+Primitive std::str[16]
+Primitive std::str[17]
+Primitive std::str[18]
+Primitive std::str[19]
+Primitive std::str[2]
+Primitive std::str[20]
+Primitive std::str[21]
+Primitive std::str[22]
+Primitive std::str[23]
+Primitive std::str[24]
+Primitive std::str[25]
+Primitive std::str[26]
+Primitive std::str[27]
+Primitive std::str[28]
+Primitive std::str[29]
+Primitive std::str[3]
+Primitive std::str[30]
+Primitive std::str[31]
+Primitive std::str[32]
+Primitive std::str[33]
+Primitive std::str[34]
+Primitive std::str[35]
+Primitive std::str[36]
+Primitive std::str[37]
+Primitive std::str[38]
+Primitive std::str[39]
+Primitive std::str[4]
+Primitive std::str[40]
+Primitive std::str[41]
+Primitive std::str[42]
+Primitive std::str[43]
+Primitive std::str[44]
+Primitive std::str[45]
+Primitive std::str[46]
+Primitive std::str[47]
+Primitive std::str[48]
+Primitive std::str[49]
+Primitive std::str[5]
+Primitive std::str[50]
+Primitive std::str[51]
+Primitive std::str[52]
+Primitive std::str[53]
+Primitive std::str[54]
+Primitive std::str[55]
+Primitive std::str[56]
+Primitive std::str[57]
+Primitive std::str[58]
+Primitive std::str[59]
+Primitive std::str[6]
+Primitive std::str[60]
+Primitive std::str[61]
+Primitive std::str[62]
+Primitive std::str[63]
+Primitive std::str[64]
+Primitive std::str[7]
+Primitive std::str[8]
+Primitive std::str[9]
+Primitive std::u16
+Primitive std::u256
+Primitive std::u32
+Primitive std::u64
+Primitive std::u8
+Module std::raw_slice
+Trait std::raw_slice::AsRawSlice
+Function std::registers::balance | pub fn balance() -> u64
+Function std::registers::context_gas | pub fn context_gas() -> u64
+Function std::registers::error | pub fn error() -> u64
+Function std::registers::flags | pub fn flags() -> u64
+Function std::registers::frame_ptr | pub fn frame_ptr() -> raw_ptr
+Function std::registers::global_gas | pub fn global_gas() -> u64
+Function std::registers::heap_ptr | pub fn heap_ptr() -> raw_ptr
+Function std::registers::instrs_start | pub fn instrs_start() -> raw_ptr
+Function std::registers::overflow | pub fn overflow() -> u64
+Function std::registers::program_counter | pub fn program_counter() -> raw_ptr
+Function std::registers::return_length | pub fn return_length() -> u64
+Function std::registers::return_value | pub fn return_value() -> u64
+Function std::registers::stack_ptr | pub fn stack_ptr() -> raw_ptr
+Function std::registers::stack_start_ptr | pub fn stack_start_ptr() -> raw_ptr
+Module std::registers
+Enum std::result::Result
+Module std::result
+Function std::revert::require | pub fn require<T>(condition: bool, value: T) where T: AbiEncode,
+Function std::revert::revert_with_log | pub fn revert_with_log<T>(value: T) where T: AbiEncode,
+Function std::revert::revert | pub fn revert(code: u64) -> !
+Module std::revert
+Module std::storage
+Function std::storage::storable_slice::clear_slice | pub fn clear_slice(key: b256) -> bool
+Function std::storage::storable_slice::read_slice | pub fn read_slice(key: b256) -> Option<raw_slice>
+Function std::storage::storable_slice::write_slice | pub fn write_slice(key: b256, slice: raw_slice)
+Module std::storage::storable_slice
+Trait std::storage::storable_slice::StorableSlice
+Function std::storage::storage_api::clear | pub fn clear<T>(slot: b256, offset: u64) -> bool
+Function std::storage::storage_api::read | pub fn read<T>(slot: b256, offset: u64) -> Option<T>
+Function std::storage::storage_api::write | pub fn write<T>(slot: b256, offset: u64, value: T)
+Module std::storage::storage_api
+Module std::storage::storage_bytes
+Struct std::storage::storage_bytes::StorageBytes
+Module std::storage::storage_key
+Struct std::storage::storage_key::StorageKey
+Enum std::storage::storage_map::StorageMapError
+Module std::storage::storage_map
+Struct std::storage::storage_map::StorageMap
+Module std::storage::storage_string
+Struct std::storage::storage_string::StorageString
+Module std::storage::storage_vec
+Struct std::storage::storage_vec::StorageVec
+Struct std::storage::storage_vec::StorageVecIter
+Function std::str::from_str_array | pub fn from_str_array<S>(s: S) -> str
+Module std::str
+Module std::string
+Struct std::string::String
+Constant std::tx::GTF_CREATE_INPUT_AT_INDEX
+Constant std::tx::GTF_CREATE_INPUTS_COUNT
+Constant std::tx::GTF_CREATE_OUTPUT_AT_INDEX
+Constant std::tx::GTF_CREATE_OUTPUTS_COUNT
+Constant std::tx::GTF_CREATE_WITNESS_AT_INDEX
+Constant std::tx::GTF_CREATE_WITNESSES_COUNT
+Constant std::tx::GTF_POLICY_MATURITY
+Constant std::tx::GTF_POLICY_MAX_FEE
+Constant std::tx::GTF_POLICY_TIP
+Constant std::tx::GTF_POLICY_TYPES
+Constant std::tx::GTF_POLICY_WITNESS_LIMIT
+Constant std::tx::GTF_SCRIPT_GAS_LIMIT
+Constant std::tx::GTF_SCRIPT_INPUT_AT_INDEX
+Constant std::tx::GTF_SCRIPT_INPUTS_COUNT
+Constant std::tx::GTF_SCRIPT_OUTPUT_AT_INDEX
+Constant std::tx::GTF_SCRIPT_OUTPUTS_COUNT
+Constant std::tx::GTF_SCRIPT_SCRIPT_DATA_LENGTH
+Constant std::tx::GTF_SCRIPT_SCRIPT_DATA
+Constant std::tx::GTF_SCRIPT_SCRIPT_LENGTH
+Constant std::tx::GTF_SCRIPT_SCRIPT
+Constant std::tx::GTF_SCRIPT_WITNESS_AT_INDEX
+Constant std::tx::GTF_SCRIPT_WITNESSES_COUNT
+Constant std::tx::GTF_TX_LENGTH
+Constant std::tx::GTF_TYPE
+Constant std::tx::GTF_WITNESS_DATA_LENGTH
+Constant std::tx::GTF_WITNESS_DATA
+Constant std::tx::TX_TYPE_BLOB
+Constant std::tx::TX_TYPE_CREATE
+Constant std::tx::TX_TYPE_MINT
+Constant std::tx::TX_TYPE_SCRIPT
+Constant std::tx::TX_TYPE_UPGRADE
+Constant std::tx::TX_TYPE_UPLOAD
+Enum std::tx::Transaction
+Function std::tx::script_gas_limit | pub fn script_gas_limit() -> u64
+Function std::tx::tx_id | pub fn tx_id() -> b256
+Function std::tx::tx_maturity | pub fn tx_maturity() -> Option<u32>
+Function std::tx::tx_max_fee | pub fn tx_max_fee() -> Option<u64>
+Function std::tx::tx_script_bytecode_hash | pub fn tx_script_bytecode_hash() -> Option<b256>
+Function std::tx::tx_script_bytecode | pub fn tx_script_bytecode<T>() -> Option<T>
+Function std::tx::tx_script_data_length | pub fn tx_script_data_length() -> Option<u64>
+Function std::tx::tx_script_data | pub fn tx_script_data<T>() -> Option<T>
+Function std::tx::tx_script_length | pub fn tx_script_length() -> Option<u64>
+Function std::tx::tx_tip | pub fn tx_tip() -> Option<u64>
+Function std::tx::tx_type | pub fn tx_type() -> Transaction
+Function std::tx::tx_witness_data_length | pub fn tx_witness_data_length(index: u64) -> Option<u64>
+Function std::tx::tx_witness_data | pub fn tx_witness_data<T>(index: u64) -> Option<T>
+Function std::tx::tx_witness_limit | pub fn tx_witness_limit() -> Option<u64>
+Function std::tx::tx_witnesses_count | pub fn tx_witnesses_count() -> u64
+Module std::tx
+Enum std::u128::U128Error
+Module std::u128
+Struct std::u128::U128
+Module std::vec
+Struct std::vec::Vec
+Struct std::vec::VecIter
+Function std::vm::evm::ecr::ec_recover_evm_address | pub fn ec_recover_evm_address( signature: B512, msg_hash: b256, ) -> Result<EvmAddress, EcRecoverError>
+Module std::vm::evm::ecr
+Module std::vm::evm::evm_address
+Struct std::vm::evm::evm_address::EvmAddress
+Module std::vm::evm
+Module std::vm

@@ -127,6 +127,38 @@ server.tool(
   }
 );
 
+// Define the provideStdContext tool
+server.tool(
+  "provideStdContext",
+  {}, // No input parameters needed
+  async () => {
+    const filePath = path.join(__dirname, '..', 'sway', 'std_paths_data.txt'); // Construct path relative to the script's directory
+    log(`MCP Tool 'provideStdContext' called. Reading file: ${filePath}`);
+
+    try {
+      const data = await fs.readFile(filePath, 'utf-8');
+      log(`Successfully read ${filePath}. Length: ${data.length}`);
+      return {
+        content: [{
+          type: "text",
+          text: `Sway Standard Library Paths and Types:\n\n${data}`
+        }]
+      };
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error(`Error in provideStdContext tool reading ${filePath}: ${error.message}`);
+      log(`Error reading ${filePath}: ${error.message}`);
+      return {
+        content: [{
+          type: "text",
+          text: `Error reading Sway standard library context file: ${error.message}`
+        }],
+        isError: true // Indicate that an error occurred
+      };
+    }
+  }
+);
+
 // Start the server using Stdio transport
 async function startServer() {
   try {

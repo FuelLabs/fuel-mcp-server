@@ -165,11 +165,14 @@ This project includes a `docker-compose.yml` file to easily run both the Qdrant 
 3.  **Index Documents:** Run the indexer script. This will read files from the specified directory (or `./docs` by default), chunk them, generate embeddings using the configured model, and add them to the Qdrant collection.
 
     ```bash
-    # Index files in ./docs using default settings
-    bun run src/indexer.ts
+    # Delete the qdrant_storage db
+    rm -rf qdrant_storage
 
-    # Index files in a custom directory, specifying collection and model
-    bun run src/indexer.ts ./path/to/my/markdown my_qdrant_collection Xenova/bge-small-en-v1.5
+    # Run qdrant locally
+    docker run -p 6333:6333 -p 6334:6334 -v "$(pwd)/qdrant_storage:/qdrant/storage" qdrant/qdrant
+
+    # Index files in ./docs using default settings
+    bun run index
     ```
 
     *Script Arguments for Indexer:*
