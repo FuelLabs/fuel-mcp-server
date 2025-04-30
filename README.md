@@ -27,7 +27,7 @@ Edit your Cursor `mcp.json`
 ```json
 {
   "mcpServers": {
-    "fuel-sever": {
+    "fuel-server": {
       "command": "docker",
       "args": [
         "compose",
@@ -122,7 +122,7 @@ This project includes a `docker-compose.yml` file to easily run both the Qdrant 
     ```json
     {
       "mcpServers": {
-        "fuel-sever": {
+        "fuel-server": {
           "command": "docker",
           "args": [
             "compose",
