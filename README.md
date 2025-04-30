@@ -10,20 +10,31 @@ This server indexes Fuel and Sway documentation (including markdown files) into 
 - qdrant db can be hosted for remote LLMs
 - Contains the scripts to index new docs
 
-## Quick Install
+## Quick Start
 
+1. **Clone source**
 ```bash
-# Git clone the repo
 git clone --depth 1 https://github.com/FuelLabs/fuel-mcp-server
+```
 
-# Docker compose
+2. **Run containers**
+```bash
 docker compose -f fuel-mcp-server/docker-compose.yml up -d
+```
 
-# Copy this
+3. **To provide cursor with the resolved path, copy the output of the following command:**
+```bash
 realpath fuel-mcp-server
 ```
 
-Edit your Cursor `mcp.json`
+The output may be something like:
+
+```
+/home/yourname/workspace/fuel-mcp-server
+```
+
+4. **Edit your Cursor `mcp.json`**
+
 ```json
 {
   "mcpServers": {
