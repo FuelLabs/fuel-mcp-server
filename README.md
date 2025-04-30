@@ -1,11 +1,11 @@
 # Fuel Network & Sway Language MCP Server
 
-This project provides a Multi-Component Protocol (MCP) server specifically designed for the Fuel Network and Sway Language ecosystem. It allows IDEs (like VS Code with the appropriate extension) to connect and seamlessly interact with Fuel documentation, enabling easier searching, understanding, and development within Fuel projects.
+This project provides a Multi-Component Protocol (MCP) server specifically designed for the [Fuel Network](https://fuel.network) and [Sway Language](https://docs.fuel.network/docs/sway/) ecosystem. It allows IDEs (like VS Code with the appropriate extension) to connect and seamlessly interact with Fuel documentation, enabling easier searching, understanding, and development within Fuel projects.
 
 This server indexes Fuel and Sway documentation (including markdown files) into a Qdrant vector database using open-source embeddings (via Transformers.js). This allows for powerful semantic search capabilities directly within the development environment.
 
 ## Features
-- Makes the entire docs.fuel.network content locally searchable to agents
+- Makes the entire [docs.fuel.network](https://docs.fuel.network/docs/intro/what-is-fuel/) content locally searchable to agents
 - Hybrid search (RAG + keyword via qdrant)
 - qdrant db can be hosted for remote LLMs
 - Contains the scripts to index new docs
