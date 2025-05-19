@@ -143,6 +143,42 @@ This project includes a `docker-compose.yml` file to easily run both the Qdrant 
     ```bash
     docker compose stop
     ```
+  
+## Using Taskfile (Alternative to Docker)
+
+For a simplified setup, you can use [Taskfile](https://taskfile.dev/) which provides easy commands for common operations.
+
+### Installation
+
+**macOS:**
+```bash
+brew install go-task
+```
+
+**Other platforms:** See [taskfile.dev/installation](https://taskfile.dev/installation/) for installation instructions.
+
+### Usage
+
+Once installed, you can use these simple commands:
+
+```bash
+# Complete setup (build, start, index)
+task setup
+
+# Start services without indexing  
+task start
+
+# Check service status
+task status
+
+# View logs
+task logs
+```
+
+For all available commands, run:
+```bash
+task help
+```
 
 ## Installation
 
