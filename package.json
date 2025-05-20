@@ -1,14 +1,18 @@
 {
   "name": "fuel-mcp-server",
+  "version": "0.0.1",
   "scripts": {
     "build": "tsc && node postbuild.cjs && mkdir -p bin/napi-v3/darwin/arm64 && cp node_modules/onnxruntime-node/bin/napi-v3/darwin/arm64/* bin/napi-v3/darwin/arm64/ && mkdir -p build/Release && cp node_modules/sharp/build/Release/sharp-darwin-arm64v8.node build/Release/ && cp -r node_modules/sharp/vendor ./vendor",
     "build:post": "node postbuild.cjs",
+    "start": "bun run src/index.ts",
     "mcp-server": "bun run src/mcp-server.ts",
-    "index": "bun run src/indexer.ts",
+    "index": "bun run src/docs/indexer.ts",
+    "query": "bun run src/docs/query.ts --run",
     "test": "bun test && bun run vitest run"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/node": "^20.11.20",
     "esbuild": "^0.25.2",
     "typescript": "^5",
     "vitest": "^3.1.1"
@@ -21,6 +25,8 @@
     "@qdrant/js-client-rest": "^1.13.0",
     "@types/markdown-it": "^14.1.2",
     "@xenova/transformers": "^2.17.2",
+    "dotenv": "^16.4.5",
+    "fuels": "^0.100.3",
     "markdown-it": "^14.1.0",
     "onnxruntime-node": "^1.18.0",
     "zod": "^3.23.8"

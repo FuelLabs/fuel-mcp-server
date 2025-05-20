@@ -1,15 +1,14 @@
 #!/usr/bin/env node
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
-import { queryDocs, log } from "./query"; // Adjust path if necessary
-import { env } from '@xenova/transformers';
 import { spawn, exec } from 'child_process';
 import net from 'net';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { promisify } from 'util';
+import { log } from './common/utils.js';
+import { createServer } from './index.js';
+import { setQdrantReadyPromise } from './docs/query.js';
 
 // Promisify exec for easier async/await usage
 const execAsync = promisify(exec);
@@ -25,152 +24,33 @@ if (repoArgIndex > -1 && process.argv.length > repoArgIndex + 1) {
         log(`Using local repository path from --repo argument: ${localRepoPath}`);
     } else if (providedPath) { // If path provided but not absolute
         console.warn(`Warning: Provided --repo path "${providedPath}" is not absolute. Ignoring --repo argument. Please provide an absolute path.`);
-        // Optionally, exit here:
-        // console.error("Error: --repo path must be absolute.");
-        // process.exit(1);
     } else { // If --repo was the last argument
          console.warn(`Warning: Missing path argument after --repo. Ignoring --repo flag.`);
     }
 }
 // --- End Argument Parsing ---
 
-// Disable local cache for transformers.js models, needed by queryDocs dependencies
-env.cacheDir = '';
-
 // Promise to track Qdrant readiness (clone + docker start)
 let qdrantReadyPromise: Promise<void> | null = null;
 
-const server = new McpServer({
-  name: "FuelMCPServer",
-  version: "0.1.0"
-});
-
-// Define the search tool
-server.tool(
-  "searchFuelDocs",
-  {
-    query: z.string().describe("The search query for Fuel and Sway documentation."),
-    collectionName: z.string().optional().describe("Optional: Specify the ChromaDB collection name."),
-    modelName: z.string().optional().describe("Optional: Specify the embedding model name."),
-    nResults: z.number().int().positive().optional().describe("Optional: Specify the number of search results (default 5).")
-  },
-  async ({ query, collectionName, modelName, nResults }) => {
-    log(`MCP Tool 'searchFuelDocs' called with query: "${query}"`);
-    
-    // --- Wait for Qdrant to be ready before proceeding ---
-    if (!qdrantReadyPromise) {
-       log("Error: Qdrant initialization was not started.");
-       return {
-         content: [{ type: "text", text: "Error: Qdrant initialization process not found." }],
-         isError: true
-       };
-    }
-    try {
-        log("Waiting for Qdrant readiness...");
-        await qdrantReadyPromise;
-        log("Qdrant is ready. Proceeding with query.");
-    } catch (initError: any) {
-        log(`Error during Qdrant initialization: ${initError?.message}`);
-        console.error("Qdrant initialization failed:", initError);
-         return {
-           content: [{ type: "text", text: `Error waiting for Qdrant initialization: ${initError?.message}` }],
-           isError: true
-         };
-    }
-    // --- End Qdrant Readiness Check ---
-
-    const executeQuery = async () => {
-      return await queryDocs(
-        query,
-        collectionName, // Will use default if undefined
-        modelName,      // Will use default if undefined
-        nResults        // Will use default if undefined
-      );
-    };
-
-    try {
-      // First attempt
-      const results = await executeQuery();
-
-      // Format results for MCP response
-      // Assuming results is an array of Qdrant point objects like:
-      // [{ id: '...', score: 0.9, payload: { content: '...', source: '...' } }, ...]
-      const formattedResults = Array.isArray(results)
-        ? results.map((hit: any) => {
-            const payload = hit.payload || {};
-            const score = hit.score;
-            const content = payload.content || 'No content found'; // Adjust 'content' key if needed based on indexing
-            const source = payload.source || 'unknown'; // Adjust 'source' key if needed
-            return `Source: ${source}\\nScore: ${score?.toFixed(4)}\\nContent:\\n${content}\\n---`;
-          }).join('\\n\\n')
-        : JSON.stringify(results, null, 2); // Fallback if format is unexpected
-
-      return {
-        content: [{
-          type: "text",
-          text: `Search Results for "${query}":\\n\\n${formattedResults}`
-        }]
-      };
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error(`Error in searchFuelDocs tool: ${error.message}`);
-      // No need for the connection retry logic here anymore,
-      // as qdrantReadyPromise should handle ensuring it's running.
-      return {
-        content: [{
-          type: "text",
-          text: `Error executing search: ${error.message}`
-        }],
-        isError: true // Indicate that an error occurred
-      };
-    }
-  }
-);
-
-// Define the provideStdContext tool
-server.tool(
-  "provideStdContext",
-  {}, // No input parameters needed
-  async () => {
-    const filePath = path.join(__dirname, '..', 'sway', 'std_paths_data.txt'); // Construct path relative to the script's directory
-    log(`MCP Tool 'provideStdContext' called. Reading file: ${filePath}`);
-
-    try {
-      const data = await fs.readFile(filePath, 'utf-8');
-      log(`Successfully read ${filePath}. Length: ${data.length}`);
-      return {
-        content: [{
-          type: "text",
-          text: `Sway Standard Library Paths and Types:\n\n${data}`
-        }]
-      };
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error(`Error in provideStdContext tool reading ${filePath}: ${error.message}`);
-      log(`Error reading ${filePath}: ${error.message}`);
-      return {
-        content: [{
-          type: "text",
-          text: `Error reading Sway standard library context file: ${error.message}`
-        }],
-        isError: true // Indicate that an error occurred
-      };
-    }
-  }
-);
-
-// Start the server using Stdio transport
+/**
+ * Initialize and start the Fuel MCP server
+ * This is the main function for direct server startup via stdio
+ */
 async function startServer() {
   try {
-    // Initiate Qdrant check/startup in the background, pass localRepoPath
+    // Initialize server with tools from our modular structure
+    const server = createServer();
+    
+    // Initiate Qdrant check/startup in the background
     ensureQdrantIsRunning(localRepoPath);
-    log("Initiated Qdrant check/startup in background.");
+    console.error("Initiated Qdrant check/startup in background.");
 
+    // Connect to stdio
     const transport = new StdioServerTransport();
-    log("Connecting MCP server via stdio...");
-    // Connect should now happen quickly without being blocked by clone/docker
+    console.error("Connecting MCP server via stdio...");
     await server.connect(transport);
-    log("MCP Server connected and ready (Qdrant initialization may still be in progress).");
+    console.error("MCP Server connected and ready (Qdrant initialization may still be in progress).");
   } catch (error) {
     console.error("Failed to start MCP server:", error);
     process.exit(1);
@@ -178,7 +58,12 @@ async function startServer() {
 }
 
 // Start the server directly
-startServer();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  startServer().catch((error) => {
+    console.error("Fatal error:", error);
+    process.exit(1);
+  });
+}
 
 // Function to check if a port is in use
 function isPortInUse(port: number): Promise<boolean> {
@@ -308,9 +193,14 @@ function ensureQdrantIsRunning(localRepoPath?: string) {
         }
     })(); // Immediately invoke the async IIFE
 
+    // Make the promise available to the query module
+    setQdrantReadyPromise(qdrantReadyPromise);
+
     // Handle unhandled rejections for the promise globally (optional but good practice)
     qdrantReadyPromise?.catch(error => {
         console.error("Unhandled error during Qdrant initialization:", error);
         // Potentially exit or signal critical failure
     });
-} 
+}
+
+export { startServer, ensureQdrantIsRunning };
