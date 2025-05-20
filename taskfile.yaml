@@ -1,0 +1,139 @@
+version: '3'
+
+vars:
+  PROJECT_DIR: "{{.TASKFILE_DIR}}"
+  COMPOSE_FILE: "{{.PROJECT_DIR}}/docker-compose.yml"
+  ENV_FILE: "{{.PROJECT_DIR}}/.env"
+
+tasks:
+  default:
+    cmds:
+      - task: help
+
+  check-deps:
+    desc: "Check if docker is installed"
+    silent: true
+    cmds:
+      - |
+        command -v docker >/dev/null 2>&1 || { echo "Docker is required but not installed."; exit 1; }
+        command -v docker-compose >/dev/null 2>&1 || docker compose version >/dev/null 2>&1 || { echo "Docker Compose is required."; exit 1; }
+
+  env:
+    desc: "Create .env file from example"
+    cmds:
+      - |
+        if [ ! -f {{.ENV_FILE}} ]; then
+          echo "Creating .env file..."
+          cp .env.example {{.ENV_FILE}}
+        fi
+    status:
+      - test -f {{.ENV_FILE}}
+
+  setup:
+    desc: "Complete setup (build, start, index)"
+    deps: [check-deps, env]
+    silent: true
+    cmds:
+      - echo "Setting up Fuel MCP Server..."
+      - docker compose up --build -d
+      - echo "Waiting for Qdrant to start..."
+      - |
+        timeout 60 sh -c 'until curl -s http://localhost:6333/health >/dev/null 2>&1; do 
+          echo "  Waiting for Qdrant..."; sleep 2
+        done' || { echo "Qdrant failed to start"; exit 1; }
+      - echo "Indexing documents..."
+      - docker compose exec -T mcp-server bun run src/indexer.ts
+      - task: mcp-config
+      - echo "✅ Setup complete!"
+
+  stop:
+    desc: "Stop all services"
+    cmds:
+      - echo "Stopping services..."
+      - docker compose stop
+
+  status:
+    desc: "Show service status"
+    silent: true
+    cmds:
+      - echo "Service Status:"
+      - docker compose ps
+      - echo ""
+      - echo "Qdrant Health:"
+      - |
+        if curl -s http://localhost:6333/health >/dev/null 2>&1; then
+          echo "✅ Qdrant is running"
+        else
+          echo "Qdrant is not responding"
+        fi
+
+  logs:
+    desc: "Show logs"
+    silent: true
+    cmds:
+      - docker compose logs -f {{.CLI_ARGS}}
+
+  test:
+    desc: "Run tests"
+    silent: true
+    cmds:
+      - echo "Running tests..."
+      - docker compose exec -T mcp-server bun test
+
+  clean:
+    desc: "Clean up Docker resources"
+    silent: true
+    cmds:
+      - echo "Cleaning up Docker resources..."
+      - docker compose down
+      - docker system prune -f
+      - echo "✅ Cleanup complete"
+
+  mcp-config:
+    desc: "Generate MCP configuration"
+    silent: true
+    cmds:
+      - |
+        cat << 'EOF'
+        {
+          "mcpServers": {
+            "fuel-server": {
+              "command": "bun",
+              "args": [
+                "run",
+                "{{.PROJECT_DIR}}/src/mcp-server.ts"
+              ]
+            }
+          }
+        }
+        EOF
+
+  start:
+    desc: "Start services without indexing"
+    deps: [check-deps, env]
+    silent: true
+    cmds:
+      - echo "Starting Fuel MCP Server..."
+      - docker compose up --build -d
+      - echo "Waiting for Qdrant to start..."
+      - |
+        timeout 60 sh -c 'until curl -s http://localhost:6333/health >/dev/null 2>&1; do 
+          echo "Waiting for Qdrant to start..."; sleep 2
+        done' || { echo "Qdrant failed to start"; exit 1; }
+      - echo "✅ Services started! Skip to indexing with 'docker compose exec -T mcp-server bun run src/indexer.ts'"
+
+  help:
+    desc: "Show available tasks"
+    silent: true
+    cmds:
+      - |
+        echo "Fuel MCP Server - Available Tasks:"
+        echo ""
+        echo "  setup         - Complete setup (first-time)"
+        echo "  start         - Start services without indexing"
+        echo "  status        - Show service status"
+        echo "  logs          - Show logs"
+        echo "  stop          - Stop services"
+        echo "  test          - Run tests"
+        echo "  clean         - Clean Docker resources"
+        echo "  mcp-config    - Generate MCP config"
