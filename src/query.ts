@@ -1,14 +1,14 @@
-import { QdrantClient } from '@qdrant/js-client-rest';
-import { pipeline, env, type Pipeline, type FeatureExtractionPipeline } from '@xenova/transformers';
+import { LocalIndex } from 'vectra';
+import { pipeline, env, type FeatureExtractionPipeline } from '@xenova/transformers';
 
 // Disable local cache for transformers.js models
-env.cacheDir = ''
+env.cacheDir = '';
 
-// Constants - Should match the ones used in indexer-qdrant.ts
+// --- Constants ---
 const DEFAULT_MODEL = "Xenova/all-MiniLM-L6-v2";
-// Ensure this matches the collection name used during indexing with Qdrant
-const DEFAULT_COLLECTION = process.env.QDRANT_COLLECTION || "bun_qdrant_docs"; 
-const DEFAULT_QDRANT_URL = process.env.QDRANT_URL || "http://localhost:6333";
+const DEFAULT_VECTRA_INDEX_PATH = process.env.VECTRA_INDEX_PATH || "./vectra_index";
+const MIN_SCORE_THRESHOLD = 0.7; // Filter out low-relevance results
+const MIN_CONTENT_LENGTH = 50; // Filter out very short snippets
 
 export function log(...messages: any[]) {
     if (process.env.LOG_LEVEL === "debug") {
@@ -17,89 +17,61 @@ export function log(...messages: any[]) {
 }
 
 /**
- * Queries the Qdrant collection with a given prompt.
+ * Improved query function with better result filtering and hybrid search
  */
 export async function queryDocs(
     queryText: string,
-    collectionName: string = DEFAULT_COLLECTION,
+    indexPath: string = DEFAULT_VECTRA_INDEX_PATH,
     modelName: string = DEFAULT_MODEL,
-    nResults: number = 5, // Number of results to retrieve
-    qdrantUrl: string = DEFAULT_QDRANT_URL,
-    qdrantApiKey?: string // Optional API key for Qdrant Cloud
-): Promise<any> { // Return type can be refined based on Qdrant result structure
+    nResults: number = 5
+): Promise<any> {
     if (!queryText) {
         throw new Error("Query text cannot be empty.");
     }
 
-    log(`Starting Qdrant query process...`);
-    log(`Collection: ${collectionName}`);
+    log(`Starting enhanced Vectra query process...`);
+    log(`Index Path: ${indexPath}`);
     log(`Embedding Model: ${modelName}`);
     log(`Query: "${queryText}"`);
     log(`Number of results: ${nResults}`);
-    log(`Qdrant URL: ${qdrantUrl}`);
-    if (qdrantApiKey) {
-        log(`Qdrant API Key: Provided (hidden)`);
-    }
 
-    // Initialize Qdrant client
-    let client: QdrantClient;
+    // --- Initialize Vectra Index ---
+    let index: LocalIndex;
     try {
-        log(`Connecting to Qdrant at ${qdrantUrl}...`);
-        client = new QdrantClient({ 
-            url: qdrantUrl,
-            apiKey: qdrantApiKey,
-        });
-        // Optional: Ping Qdrant to verify connection early
-        // await client.api('GET', '/'); // Example ping, adjust endpoint if needed
-        log(`Successfully initialized Qdrant client.`);
+        log(`Connecting to Vectra index at ${indexPath}...`);
+        index = new LocalIndex(indexPath);
+        
+        if (!(await index.isIndexCreated())) {
+            throw new Error(`Vectra index not found at '${indexPath}'. Please run the indexer first.`);
+        }
+        
+        log(`Successfully connected to Vectra index.`);
     } catch (error) {
-        console.error(`\n❌ Error initializing Qdrant client at ${qdrantUrl}:`, error);
+        console.error(`\n❌ Error initializing Vectra index at ${indexPath}:`, error);
         console.error(`\n   Troubleshooting Tips:`);
-        console.error(`   1. Ensure Qdrant is running (e.g., via Docker).`);
-        console.error(`   2. Verify the Qdrant URL ('${qdrantUrl}') is correct.`);
-        console.error(`   3. If using Qdrant Cloud, ensure the API key is valid.`);
-        console.error(`   (Configure via QDRANT_URL, QDRANT_API_KEY env vars)`);
-        throw new Error(`Failed to initialize Qdrant client: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    
-    // Check if collection exists (optional but good practice)
-    try {
-        await client.getCollection(collectionName);
-        log(`Collection '${collectionName}' exists.`);
-    } catch (error: any) {
-         if (error?.status === 404) {
-             console.error(`\n❌ Error: Collection '${collectionName}' not found in Qdrant.`);
-             console.error(`   Troubleshooting Tips:`);
-             console.error(`   1. Did you run the indexing script first (e.g., bun run src/indexer-qdrant.ts)?`);
-             console.error(`   2. Verify the collection name matches the one used during indexing.`);
-             console.error(`   (Configure via QDRANT_COLLECTION env var)`);
-             throw new Error(`Collection '${collectionName}' not found.`);
-         } else {
-            // Handle other potential errors during collection check
-            console.error(`\n❌ Error checking Qdrant collection '${collectionName}':`, error);
-            throw new Error(`Failed to check Qdrant collection: ${error instanceof Error ? error.message : String(error)}`);
-         }
+        console.error(`   1. Ensure the Vectra index exists at '${indexPath}'.`);
+        console.error(`   2. Run the indexer script first to create the index.`);
+        console.error(`   (Configure via VECTRA_INDEX_PATH env var)`);
+        throw new Error(`Failed to initialize Vectra index: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-
-    // Initialize embedding model pipeline
-    let embedder: any; 
+    // --- Initialize embedding model pipeline ---
+    let embedder: FeatureExtractionPipeline;
     try {
         log(`Loading embedding model '${modelName}'...`);
-        embedder = await pipeline('feature-extraction', modelName);
+        embedder = await pipeline('feature-extraction', modelName) as FeatureExtractionPipeline; 
         log(`Embedding model loaded successfully.`);
     } catch (error) {
         console.error(`Error loading embedding model '${modelName}':`, error);
         throw new Error(`Failed to load embedding model: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    // Embed the query text
+    // --- Embed the query text ---
     let queryEmbedding: number[];
     try {
         log("Generating query embedding...");
         const output = await embedder(queryText, { pooling: 'mean', normalize: true });
         
-        // Adapt embedding extraction based on transformers.js output structure
         if (output && output.data instanceof Float32Array) {
             queryEmbedding = Array.from(output.data);
         } else {
@@ -112,58 +84,217 @@ export async function queryDocs(
         throw new Error(`Failed during query embedding: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    // Query Qdrant
+    // --- Query Vectra with higher result count for filtering ---
+    let rawResults: any[];
     try {
-        log(`Querying Qdrant collection '${collectionName}'...`);
-        const results = await client.search(collectionName, {
-            vector: queryEmbedding,
-            limit: nResults,
-            with_payload: true, // Include payload in results
-            // with_vector: false, // Optionally include vectors
-        });
-        log(`Qdrant query successful.`);
-        return results;
+        log(`Querying Vectra index...`);
+        // Get more results than requested so we can filter and still have enough
+        const queryCount = Math.max(nResults * 3, 15);
+        rawResults = await index.queryItems(queryEmbedding, queryCount);
+        log(`Vectra query successful. Found ${rawResults.length} raw results.`);
     } catch (error) {
-        console.error(`Error querying Qdrant collection '${collectionName}':`, error);
-        throw new Error(`Failed during Qdrant query: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(`Error querying Vectra index:`, error);
+        throw new Error(`Failed during Vectra query: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    // --- Enhanced result filtering and ranking ---
+    const filteredResults = filterAndRankResults(rawResults, queryText, nResults);
+    log(`Filtered to ${filteredResults.length} high-quality results.`);
+
+    // --- Hybrid search fallback if no good semantic results ---
+    if (filteredResults.length === 0) {
+        log("No high-quality semantic results found, attempting keyword-based fallback...");
+        const keywordResults = await performKeywordSearch(index, queryText, queryEmbedding, nResults * 2);
+        const fallbackResults = filterAndRankResults(keywordResults, queryText, nResults);
+        log(`Keyword search found ${fallbackResults.length} results.`);
+        return fallbackResults;
+    }
+
+    return filteredResults;
+}
+
+/**
+ * Enhanced filtering and ranking of search results
+ */
+function filterAndRankResults(results: any[], queryText: string, maxResults: number): any[] {
+    const queryLower = queryText.toLowerCase();
+    const queryTerms = queryLower.split(/\s+/);
+
+    return results
+        .filter(result => {
+            const metadata = result.item?.metadata || {};
+            const content = metadata.content || '';
+            const score = result.score || 0;
+
+            // Filter criteria
+            return (
+                score >= MIN_SCORE_THRESHOLD || // High semantic similarity
+                content.length >= MIN_CONTENT_LENGTH || // Substantial content
+                containsRelevantKeywords(content, queryTerms) || // Contains query terms
+                isHighQualityContent(content, metadata) // Quality indicators
+            );
+        })
+        .map(result => {
+            // Enhanced scoring that combines semantic similarity with content quality
+            const metadata = result.item?.metadata || {};
+            const content = metadata.content || '';
+            const semanticScore = result.score || 0;
+            
+            // Calculate keyword relevance bonus
+            const keywordScore = calculateKeywordRelevance(content, queryTerms);
+            
+            // Content quality bonus
+            const qualityScore = calculateContentQuality(content, metadata);
+            
+            // Combined score
+            const combinedScore = semanticScore * 0.6 + keywordScore * 0.3 + qualityScore * 0.1;
+            
+            return {
+                ...result,
+                originalScore: semanticScore,
+                combinedScore,
+                keywordRelevance: keywordScore,
+                contentQuality: qualityScore
+            };
+        })
+        .sort((a, b) => b.combinedScore - a.combinedScore)
+        .slice(0, maxResults);
+}
+
+/**
+ * Check if content contains relevant keywords
+ */
+function containsRelevantKeywords(content: string, queryTerms: string[]): boolean {
+    const contentLower = content.toLowerCase();
+    return queryTerms.some(term => 
+        contentLower.includes(term) || 
+        contentLower.includes(term.slice(0, -1)) // Handle plurals
+    );
+}
+
+/**
+ * Identify high-quality content based on various indicators
+ */
+function isHighQualityContent(content: string, metadata: any): boolean {
+    // Avoid pure code snippets without explanation
+    if (metadata.type === 'code' && content.length < 200) return false;
+    
+    // Look for explanatory text patterns
+    const explanatoryPatterns = [
+        /^[A-Z][^.]*\s+is\s+/i,           
+        /^[A-Z][^.]*\s+allows?\s+/i,     
+        /^[A-Z][^.]*\s+provides?\s+/i,    
+        /definition|overview|introduction|explanation/i,
+        /\b(what|how|why)\s+/i,
+    ];
+    
+    return explanatoryPatterns.some(pattern => pattern.test(content)) ||
+           (content.length > 150 && !content.trim().startsWith('```')); // Substantial non-code content
+}
+
+/**
+ * Calculate keyword relevance score
+ */
+function calculateKeywordRelevance(content: string, queryTerms: string[]): number {
+    const contentLower = content.toLowerCase();
+    let score = 0;
+    
+    for (const term of queryTerms) {
+        const termLower = term.toLowerCase();
+        if (contentLower.includes(termLower)) {
+            // Exact match bonus
+            score += 0.3;
+            
+            // Beginning of sentence bonus
+            if (contentLower.includes(`. ${termLower}`) || contentLower.startsWith(termLower)) {
+                score += 0.2;
+            }
+            
+            // Title/header bonus
+            if (contentLower.includes(`# ${termLower}`) || contentLower.includes(`## ${termLower}`)) {
+                score += 0.4;
+            }
+        }
+    }
+    
+    return Math.min(score, 1.0); // Cap at 1.0
+}
+
+/**
+ * Calculate content quality score
+ */
+function calculateContentQuality(content: string, metadata: any): number {
+    let score = 0;
+    
+    // Length bonus (but not too long)
+    const length = content.length;
+    if (length > 100 && length < 2000) score += 0.3;
+    
+    // Type preference
+    if (metadata.type === 'text') score += 0.2;
+    
+    // Structure indicators
+    if (content.includes('\n\n')) score += 0.1; // Paragraphs
+    if (content.match(/^#+\s/m)) score += 0.2;   // Headers
+    if (content.includes('. ')) score += 0.1;    // Sentences
+    
+    return Math.min(score, 1.0);
+}
+
+/**
+ * Keyword-based search fallback using metadata filtering
+ */
+async function performKeywordSearch(index: LocalIndex, queryText: string, queryEmbedding: number[], maxResults: number): Promise<any[]> {
+    try {
+        // Get more results for keyword filtering
+        const allResults = await index.queryItems(queryEmbedding, maxResults * 3);
+        
+        const queryTerms = queryText.toLowerCase().split(/\s+/);
+        
+        // Filter by keyword presence in metadata
+        return allResults.filter(result => {
+            const metadata = result.item?.metadata || {};
+            const searchableText = [
+                metadata.content || '',
+                metadata.title || '',
+                metadata.section || '',
+                (metadata.keywords || []).join(' ')
+            ].join(' ').toLowerCase();
+            
+            return queryTerms.some(term => searchableText.includes(term));
+        });
+    } catch (error) {
+        log(`Keyword search fallback failed: ${error}`);
+        return [];
     }
 }
 
-// Example of running the script directly
+// --- Example of running the script directly ---
 async function run() {
-    const query = process.argv.find((arg, i) => i > 1 && !arg.startsWith('--')); // Find first non-flag arg after script name
-    if (!query) {
-        console.error("Please provide a query string as a command-line argument.");
-        console.error('Example: bun src/query-qdrant.ts --run "What is Qdrant?"');
+    const runFlagIndex = process.argv.indexOf('--run');
+    const query = process.argv.find((arg, i) => i > runFlagIndex && !arg.startsWith('--')); 
+
+    if (runFlagIndex === -1 || !query) {
+        console.error(`Usage: bun src/query.ts --run "Your query text here"`);
         process.exit(1);
     }
 
-    const collectionName = DEFAULT_COLLECTION; // Uses env var QDRANT_COLLECTION or default
+    const indexPath = process.env.VECTRA_INDEX_PATH || DEFAULT_VECTRA_INDEX_PATH; 
     const model = process.env.EMBEDDING_MODEL || DEFAULT_MODEL;
     const numResults = process.env.NUM_RESULTS ? parseInt(process.env.NUM_RESULTS, 10) : 5;
-    const qdrantUrl = DEFAULT_QDRANT_URL; // Uses env var QDRANT_URL or default
-    const qdrantApiKey = process.env.QDRANT_API_KEY; // Uses env var QDRANT_API_KEY
 
     if (isNaN(numResults) || numResults <= 0) {
-        console.warn(`Invalid NUM_RESULTS environment variable: ${process.env.NUM_RESULTS}. Using default ${5}.`);
-        // Keep the default, don't exit process.exit(1);
+        console.warn(`Invalid NUM_RESULTS environment variable: '${process.env.NUM_RESULTS}'. Using default ${5}.`);
     }
 
     try {
-        const queryResults = await queryDocs(
-            query, 
-            collectionName, 
-            model, 
-            numResults, 
-            qdrantUrl, 
-            qdrantApiKey
-        );
-        log("\n--- Qdrant Query Results --- ");
-        // Pretty print the results (can be customized)
-        log(JSON.stringify(queryResults, null, 2));
-        log("\n--------------------------");
+        log(`Executing enhanced query against Vectra: "${query}"`);
+        const queryResults = await queryDocs(query, indexPath, model, numResults);
+        log("\n--- Enhanced Vectra Query Results ---");
+        console.log(JSON.stringify(queryResults, null, 2));
+        log("\n------------------------------------");
     } catch (error) {
-        console.error("\n--- Qdrant Query failed --- ", error);
+        console.error("\n--- Vectra Query failed ---", error);
         process.exit(1);
     }
 }
@@ -171,4 +302,4 @@ async function run() {
 // Only run if --run flag is present
 if (process.argv.includes('--run')) {
     run();
-} 
+}
