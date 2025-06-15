@@ -1,33 +1,44 @@
 # Fuel Network & Sway Language MCP Server
 
-This project provides a Multi-Component Protocol (MCP) server specifically designed for the Fuel Network and Sway Language ecosystem. It allows IDEs (like VS Code with the appropriate extension) to connect and seamlessly interact with Fuel documentation, enabling easier searching, understanding, and development within Fuel projects.
+This project provides a Multi-Component Protocol (MCP) server specifically designed for the [Fuel Network](https://fuel.network) and [Sway Language](https://docs.fuel.network/docs/sway/) ecosystem. It allows IDEs (like VS Code with the appropriate extension) to connect and seamlessly interact with Fuel documentation, enabling easier searching, understanding, and development within Fuel projects.
 
 This server indexes Fuel and Sway documentation (including markdown files) into a Qdrant vector database using open-source embeddings (via Transformers.js). This allows for powerful semantic search capabilities directly within the development environment.
 
 ## Features
-- Makes the entire docs.fuel.network content locally searchable to agents
+- Makes the entire [docs.fuel.network](https://docs.fuel.network/docs/intro/what-is-fuel/) content locally searchable to agents
 - Hybrid search (RAG + keyword via qdrant)
 - qdrant db can be hosted for remote LLMs
 - Contains the scripts to index new docs
 
-## Quick Install
+## Quick Start
 
+1. **Clone source**
 ```bash
-# Git clone the repo
 git clone --depth 1 https://github.com/FuelLabs/fuel-mcp-server
+```
 
-# Docker compose
+2. **Run containers**
+```bash
 docker compose -f fuel-mcp-server/docker-compose.yml up -d
+```
 
-# Copy this
+3. **To provide cursor with the resolved path, copy the output of the following command:**
+```bash
 realpath fuel-mcp-server
 ```
 
-Edit your Cursor `mcp.json`
+The output may be something like:
+
+```
+/home/yourname/workspace/fuel-mcp-server
+```
+
+4. **Edit your Cursor `mcp.json`**
+
 ```json
 {
   "mcpServers": {
-    "fuel-sever": {
+    "fuel-server": {
       "command": "docker",
       "args": [
         "compose",
@@ -122,7 +133,7 @@ This project includes a `docker-compose.yml` file to easily run both the Qdrant 
     ```json
     {
       "mcpServers": {
-        "fuel-sever": {
+        "fuel-server": {
           "command": "docker",
           "args": [
             "compose",
