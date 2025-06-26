@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import * as fsPromises from 'node:fs/promises';
 import path from 'node:path';
-import { QdrantClient } from '@qdrant/js-client-rest';
+import { LocalIndex } from 'vectra';
 import { pipeline } from '@xenova/transformers';
-import { indexDocsQdrant } from './indexer';
+import { indexDocsVectra } from './indexer';
 import { chunkMarkdown } from './chunker';
 
 // --- Mocks ---
@@ -30,7 +30,6 @@ mock.module('node:fs/promises', () => ({
 }));
 
 // Mock @xenova/transformers pipeline
-// Define mockEmbedder scope accessible within the module mock
 let mockEmbedder = mock((texts: string[], options: any) => {
     console.log(`Default mock embedder called with ${texts.length} texts.`);
     const embeddingDim = 384;
@@ -47,7 +46,6 @@ let mockEmbedder = mock((texts: string[], options: any) => {
 const pipelineMock = mock(async (task: string, model: string) => {
     console.log(`Mock pipeline loaded for task: ${task}, model: ${model}`);
     expect(task).toBe('feature-extraction');
-    // Return the current mockEmbedder instance
     return mockEmbedder;
 });
 
@@ -56,65 +54,53 @@ mock.module('@xenova/transformers', () => ({
     env: { cacheDir: '' },
 }));
 
-
-// Mock QdrantClient
-const mockQdrantClientInstance = {
-    getCollections: mock(async (options?: { consistency?: any }) => {
-        console.log('Mock getCollections called');
-        if (mockQdrantClientInstance.simulateCollectionExists) {
-            return { collections: [{ name: mockQdrantClientInstance.simulateCollectionNameExists }] };
-        }
-        return { collections: [] };
+// Mock Vectra LocalIndex
+const mockLocalIndexInstance = {
+    isIndexCreated: mock(async () => {
+        console.log('Mock isIndexCreated called');
+        return mockLocalIndexInstance.simulateIndexExists;
     }),
-    createCollection: mock(async (name: string, params: any) => {
-        console.log(`Mock createCollection called for '${name}'`);
-        expect(name).toBeString();
-        expect(params.vectors.size).toBe(384);
-        expect(params.vectors.distance).toBe('Cosine');
-        mockQdrantClientInstance.simulateCollectionExists = true;
-        mockQdrantClientInstance.simulateCollectionNameExists = name;
+    createIndex: mock(async () => {
+        console.log('Mock createIndex called');
+        mockLocalIndexInstance.simulateIndexExists = true;
         return true;
     }),
-    upsert: mock(async (name: string, data: { wait: boolean, points: any[] }) => {
-        console.log(`Mock upsert called for '${name}' with ${data.points.length} points.`);
-        expect(name).toBeString();
-        expect(data.wait).toBe(true);
-        expect(Array.isArray(data.points)).toBe(true);
-        data.points.forEach(p => {
-            expect(p.id).toBeString();
-            expect(p.vector).toBeArray();
-            expect(p.vector.length).toBe(384);
-            expect(p.payload).toBeObject();
-            expect(p.payload.source).toBeString();
-            expect(p.payload.type).toBeString();
-            expect(p.payload.content).toBeString();
-        });
-        mockQdrantClientInstance.upsertCallCount += 1;
-        mockQdrantClientInstance.pointsUpserted.push(...data.points);
-        return { status: 'ok', result: { operation_id: 123, status: 'completed' } };
+    insertItem: mock(async (item: { vector: number[], metadata: any }) => {
+        console.log(`Mock insertItem called with metadata source: ${item.metadata.source}`);
+        expect(item.vector).toBeArray();
+        expect(item.vector.length).toBe(384);
+        expect(item.metadata).toBeObject();
+        expect(item.metadata.source).toBeString();
+        expect(item.metadata.type).toBeString();
+        expect(item.metadata.content).toBeString();
+        mockLocalIndexInstance.insertItemCallCount += 1;
+        mockLocalIndexInstance.itemsInserted.push(item);
+        return { id: `item_${mockLocalIndexInstance.insertItemCallCount}` };
     }),
-    simulateCollectionExists: false,
-    simulateCollectionNameExists: '' as string,
-    upsertCallCount: 0,
-    pointsUpserted: [] as any[],
+    // Mock state
+    simulateIndexExists: false,
+    insertItemCallCount: 0,
+    itemsInserted: [] as any[],
     resetMock: () => {
-        mockQdrantClientInstance.getCollections.mockClear();
-        mockQdrantClientInstance.createCollection.mockClear();
-        mockQdrantClientInstance.upsert.mockClear();
-        mockQdrantClientInstance.simulateCollectionExists = false;
-        mockQdrantClientInstance.simulateCollectionNameExists = '';
-        mockQdrantClientInstance.upsertCallCount = 0;
-        mockQdrantClientInstance.pointsUpserted = [];
+        mockLocalIndexInstance.isIndexCreated.mockClear();
+        mockLocalIndexInstance.createIndex.mockClear();
+        mockLocalIndexInstance.insertItem.mockClear();
+        mockLocalIndexInstance.simulateIndexExists = false;
+        mockLocalIndexInstance.insertItemCallCount = 0;
+        mockLocalIndexInstance.itemsInserted = [];
     }
 };
-mock.module('@qdrant/js-client-rest', () => ({
-    QdrantClient: mock(() => mockQdrantClientInstance)
-}));
 
+mock.module('vectra', () => ({
+    LocalIndex: mock((indexPath: string) => {
+        console.log(`Mock LocalIndex created with path: ${indexPath}`);
+        return mockLocalIndexInstance;
+    })
+}));
 
 // --- Test Suite ---
 
-describe('indexDocsQdrant', () => {
+describe('indexDocsVectra', () => {
     const consoleLogMock = mock();
     const consoleErrorMock = mock();
     const originalLog = console.log;
@@ -123,9 +109,10 @@ describe('indexDocsQdrant', () => {
     beforeEach(() => {
         // Reset specific mocks used globally or across tests
         pipelineMock.mockClear();
-        mockEmbedder.mockClear(); // Clear the embedder mock itself
-        // Reset Qdrant mock state
-        mockQdrantClientInstance.resetMock();
+        mockEmbedder.mockClear();
+        // Reset LocalIndex mock state
+        mockLocalIndexInstance.resetMock();
+        (LocalIndex as any).mockClear();
 
         // Reset console mocks
         consoleLogMock.mockClear();
@@ -134,9 +121,7 @@ describe('indexDocsQdrant', () => {
         console.error = consoleErrorMock;
 
         // Reset environment variables
-        delete process.env.QDRANT_URL;
-        delete process.env.QDRANT_API_KEY;
-        delete process.env.QDRANT_COLLECTION;
+        delete process.env.VECTRA_INDEX_PATH;
         delete process.env.EMBEDDING_MODEL;
         delete process.env.CHUNK_SIZE;
     });
@@ -148,167 +133,152 @@ describe('indexDocsQdrant', () => {
 
     it('should successfully index markdown files', async () => {
         const docsDir = './test-docs';
-        const collectionName = 'test-collection';
+        const indexPath = './test-index';
 
-        await indexDocsQdrant(docsDir, collectionName);
+        await indexDocsVectra(docsDir, indexPath);
 
-        expect(mockQdrantClientInstance.getCollections).toHaveBeenCalledTimes(1);
-        expect(mockQdrantClientInstance.createCollection).toHaveBeenCalledTimes(1);
-        expect(mockQdrantClientInstance.createCollection).toHaveBeenCalledWith(collectionName, { vectors: { size: 384, distance: 'Cosine' } });
-        expect(mockQdrantClientInstance.upsert).toHaveBeenCalledTimes(1);
+        expect(LocalIndex).toHaveBeenCalledWith(indexPath);
+        expect(mockLocalIndexInstance.isIndexCreated).toHaveBeenCalledTimes(1);
+        expect(mockLocalIndexInstance.createIndex).toHaveBeenCalledTimes(1);
+        expect(mockLocalIndexInstance.insertItem).toHaveBeenCalledTimes(mockLocalIndexInstance.itemsInserted.length);
 
-        expect(mockQdrantClientInstance.pointsUpserted.length).toBeGreaterThan(0);
-        const firstPoint = mockQdrantClientInstance.pointsUpserted[0];
-        // Source file could be doc1 or doc2 depending on chunking/processing order
-        expect(firstPoint.payload.source).toMatch(/doc[12]\.md/); // Corrected Regex
-        expect(firstPoint.payload.content).toBeString();
-        expect(firstPoint.vector.length).toBe(384);
+        expect(mockLocalIndexInstance.itemsInserted.length).toBeGreaterThan(0);
+        const firstItem = mockLocalIndexInstance.itemsInserted[0];
+        expect(firstItem.metadata.source).toMatch(/doc[12]\.md/);
+        expect(firstItem.metadata.content).toBeString();
+        expect(firstItem.vector.length).toBe(384);
 
         expect(pipelineMock).toHaveBeenCalledTimes(1);
         expect(mockEmbedder).toHaveBeenCalledTimes(1);
 
-        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Starting Qdrant indexing process...`));
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Starting Vectra indexing process...`));
         expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Found 2 markdown files to process.`));
-        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Collection '${collectionName}' not found. Creating...`));
-        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Upserting batch to Qdrant...`));
-        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Qdrant Indexing finished!`));
-        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Total chunks upserted to Qdrant: ${mockQdrantClientInstance.pointsUpserted.length}`));
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Vectra index not found at '${indexPath}'. Creating...`));
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Adding batch 1 items to Vectra index...`));
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Vectra Indexing finished!`));
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Total chunks added to Vectra index: ${mockLocalIndexInstance.itemsInserted.length}`));
         expect(consoleErrorMock).not.toHaveBeenCalled();
     });
 
-    it('should use existing collection if found', async () => {
+    it('should use existing index if found', async () => {
         const docsDir = './test-docs';
-        const collectionName = 'test-collection';
-        mockQdrantClientInstance.simulateCollectionExists = true;
-        mockQdrantClientInstance.simulateCollectionNameExists = collectionName;
+        const indexPath = './test-index';
+        mockLocalIndexInstance.simulateIndexExists = true;
 
-        await indexDocsQdrant(docsDir, collectionName);
+        await indexDocsVectra(docsDir, indexPath);
 
-        expect(mockQdrantClientInstance.getCollections).toHaveBeenCalledTimes(1);
-        expect(mockQdrantClientInstance.createCollection).not.toHaveBeenCalled();
-        expect(mockQdrantClientInstance.upsert).toHaveBeenCalledTimes(1);
-        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Collection '${collectionName}' already exists.`));
+        expect(mockLocalIndexInstance.isIndexCreated).toHaveBeenCalledTimes(1);
+        expect(mockLocalIndexInstance.createIndex).not.toHaveBeenCalled();
+        expect(mockLocalIndexInstance.insertItem).toHaveBeenCalledTimes(mockLocalIndexInstance.itemsInserted.length);
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Vectra index already exists at '${indexPath}'.`));
         expect(consoleLogMock).not.toHaveBeenCalledWith(expect.stringContaining(`Creating...`));
     });
 
     it('should handle directories with no markdown files', async () => {
         const docsDir = './test-docs-no-md';
-        await indexDocsQdrant(docsDir);
+        await indexDocsVectra(docsDir);
 
         // Pipeline should not be called if no files are processed
         expect(pipelineMock).not.toHaveBeenCalled();
-        expect(mockQdrantClientInstance.getCollections).not.toHaveBeenCalled();
-        expect(mockQdrantClientInstance.createCollection).not.toHaveBeenCalled();
-        expect(mockQdrantClientInstance.upsert).not.toHaveBeenCalled();
+        expect(LocalIndex).not.toHaveBeenCalled();
+        expect(mockLocalIndexInstance.isIndexCreated).not.toHaveBeenCalled();
+        expect(mockLocalIndexInstance.createIndex).not.toHaveBeenCalled();
+        expect(mockLocalIndexInstance.insertItem).not.toHaveBeenCalled();
         expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining("No markdown files found in the specified directory."));
     });
 
     it('should handle empty directories', async () => {
         const docsDir = './test-docs-empty';
-        await indexDocsQdrant(docsDir);
+        await indexDocsVectra(docsDir);
 
         expect(pipelineMock).not.toHaveBeenCalled();
-        expect(mockQdrantClientInstance.getCollections).not.toHaveBeenCalled();
-        expect(mockQdrantClientInstance.createCollection).not.toHaveBeenCalled();
-        expect(mockQdrantClientInstance.upsert).not.toHaveBeenCalled();
+        expect(LocalIndex).not.toHaveBeenCalled();
+        expect(mockLocalIndexInstance.isIndexCreated).not.toHaveBeenCalled();
+        expect(mockLocalIndexInstance.createIndex).not.toHaveBeenCalled();
+        expect(mockLocalIndexInstance.insertItem).not.toHaveBeenCalled();
         expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining("No markdown files found in the specified directory."));
     });
 
-    it('should handle errors during Qdrant connection', async () => {
+    it('should handle errors during Vectra index creation', async () => {
         const docsDir = './test-docs';
-        const collectionName = 'error-connect-collection';
-        const connectError = new Error("Qdrant unavailable");
-        mockQdrantClientInstance.getCollections.mockImplementationOnce(async () => {
-             throw connectError;
+        const indexPath = './error-index';
+        const createError = new Error("Index creation failed");
+        mockLocalIndexInstance.createIndex.mockImplementationOnce(async () => {
+             throw createError;
         });
 
-        await expect(indexDocsQdrant(docsDir, collectionName))
+        await expect(indexDocsVectra(docsDir, indexPath))
             .rejects
-            .toThrow(`Failed to initialize Qdrant client/collection: Failed to ensure Qdrant collection: ${connectError.message}`);
+            .toThrow(`Failed to ensure Vectra index: ${createError.message}`);
 
-        expect(consoleErrorMock).toHaveBeenCalledWith(expect.stringContaining(`Error initializing Qdrant client or ensuring collection '${collectionName}'`), expect.any(Error));
-        // Ensure pipeline wasn't called if connection failed early
+        expect(consoleErrorMock).toHaveBeenCalledWith(expect.stringContaining(`Error ensuring Vectra index exists at '${indexPath}'`), expect.any(Error));
+        // Ensure pipeline wasn't called if index creation failed early
         expect(pipelineMock).not.toHaveBeenCalled();
     });
 
     it('should handle errors during embedding', async () => {
         const docsDir = './test-docs';
-        const collectionName = 'error-embed-collection';
+        const indexPath = './embed-error-index';
         const embedError = new Error("Embedding failed");
-        mockEmbedder.mockImplementationOnce(async () => {
-             throw embedError;
-        });
+        
+        // Mock the pipeline function to reject (not the embedder)
+        pipelineMock.mockRejectedValueOnce(embedError);
 
-        await expect(indexDocsQdrant(docsDir, collectionName))
+        await expect(indexDocsVectra(docsDir, indexPath))
             .rejects
-            .toThrow(`Failed during embedding generation: ${embedError.message}`);
+            .toThrow(`Failed to load embedding model: ${embedError.message}`);
 
-        expect(pipelineMock).toHaveBeenCalledTimes(1); // Pipeline is called
-        expect(mockEmbedder).toHaveBeenCalledTimes(1); // Embedder is called and rejects
-        expect(consoleErrorMock).toHaveBeenCalledWith(expect.stringContaining("Error generating embeddings for batch 1"), embedError);
-        expect(mockQdrantClientInstance.upsert).not.toHaveBeenCalled(); // Upsert should not be called
+        expect(pipelineMock).toHaveBeenCalledTimes(1);
+        expect(consoleErrorMock).toHaveBeenCalledWith(expect.stringContaining("Error loading embedding model"), embedError);
+        expect(mockLocalIndexInstance.insertItem).not.toHaveBeenCalled();
     });
 
-    it('should handle errors during Qdrant upsert', async () => {
+    it('should handle errors during item insertion', async () => {
         const docsDir = './test-docs';
-        const collectionName = 'error-upsert-collection';
-        const upsertError = new Error("Upsert failed");
-        mockQdrantClientInstance.upsert.mockImplementationOnce(async () => {
-            throw upsertError;
+        const indexPath = './insert-error-index';
+        const insertError = new Error("Item insertion failed");
+        mockLocalIndexInstance.insertItem.mockImplementationOnce(async () => {
+            throw insertError;
         });
 
-        await expect(indexDocsQdrant(docsDir, collectionName))
-            .rejects
-            .toThrow(`Failed during Qdrant upsert operation: ${upsertError.message}`);
+        // This should not throw because we continue with other items after an insertion error
+        await indexDocsVectra(docsDir, indexPath);
 
-        expect(pipelineMock).toHaveBeenCalledTimes(1); // Pipeline called
-        expect(mockEmbedder).toHaveBeenCalledTimes(1); // Embedding succeeded
-        expect(mockQdrantClientInstance.upsert).toHaveBeenCalledTimes(1); // Upsert called and rejected
-        expect(consoleErrorMock).toHaveBeenCalledWith(expect.stringContaining("Error upserting batch 1 to Qdrant"), upsertError);
+        expect(pipelineMock).toHaveBeenCalledTimes(1);
+        expect(mockEmbedder).toHaveBeenCalledTimes(1);
+        expect(mockLocalIndexInstance.insertItem).toHaveBeenCalled();
+        expect(consoleErrorMock).toHaveBeenCalledWith(expect.stringContaining("Error adding item"), insertError);
+        // Should have attempted more items after the first error
+        expect(mockLocalIndexInstance.insertItem.mock.calls.length).toBeGreaterThan(1);
     });
-
 
     it('should use environment variables for configuration', async () => {
-        process.env.QDRANT_URL = 'http://qdrant-prod:6333';
-        process.env.QDRANT_API_KEY = 'test-key';
-        process.env.QDRANT_COLLECTION = 'prod-collection';
+        process.env.VECTRA_INDEX_PATH = './env-test-index';
         process.env.EMBEDDING_MODEL = 'Xenova/custom-model';
         process.env.CHUNK_SIZE = '500';
 
         const docsDir = './test-docs';
-        // Simulate the wrapper function reading env vars
-        const expectedCollectionName = process.env.QDRANT_COLLECTION || 'bun_qdrant_docs'; // Read from env
-        const expectedModelName = process.env.EMBEDDING_MODEL || 'Xenova/all-MiniLM-L6-v2'; // Read from env
-        const expectedChunkSize = process.env.CHUNK_SIZE ? parseInt(process.env.CHUNK_SIZE, 10) : 2000; // Read from env
+        const expectedIndexPath = process.env.VECTRA_INDEX_PATH;
+        const expectedModelName = process.env.EMBEDDING_MODEL;
+        const expectedChunkSize = parseInt(process.env.CHUNK_SIZE, 10);
 
-        // Call indexDocsQdrant with values derived from env vars
-        await indexDocsQdrant(docsDir, expectedCollectionName, expectedModelName, expectedChunkSize);
+        await indexDocsVectra(docsDir, expectedIndexPath, expectedModelName, expectedChunkSize);
 
-        // --- Assertions ---
-
-        // Check logs using a more direct approach for collection name
-        const consoleCalls = consoleLogMock.mock.calls;
-        const collectionLogFound = consoleCalls.some(args =>
-            typeof args[0] === 'string' && args[0].includes(`Collection: ${expectedCollectionName}`)
-        );
-        expect(collectionLogFound).toBe(true);
-
-        // Check other logs with expected values from env vars
+        // Check logs for expected values from env vars
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Vectra index path: ${expectedIndexPath}`));
         expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Embedding Model: ${expectedModelName}`));
         expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Target Chunk Size (tokens): ${expectedChunkSize}`));
-        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Connecting to Qdrant at http://qdrant-prod:6333...`));
+
+        // Check LocalIndex called with index path from env var
+        expect(LocalIndex).toHaveBeenCalledWith(expectedIndexPath);
 
         // Check pipeline called with model from env var
         expect(pipelineMock).toHaveBeenCalledWith('feature-extraction', expectedModelName);
-
-        // Check Qdrant methods called with collection from env var
-        expect(mockQdrantClientInstance.createCollection).toHaveBeenCalledWith(expectedCollectionName, expect.anything());
-        expect(mockQdrantClientInstance.upsert).toHaveBeenCalledWith(expectedCollectionName, expect.anything());
     });
 
     it('should process files in batches', async () => {
         const docsDir = './test-docs-large';
-        const collectionName = 'batch-test-collection';
+        const indexPath = './batch-test-index';
         const batchSize = 100;
 
         const sampleContent = `# Large Doc large_doc_1.md\n\nSome content.`;
@@ -316,14 +286,33 @@ describe('indexDocsQdrant', () => {
         const expectedTotalChunks = 150 * sampleChunks.length;
         const expectedBatches = Math.ceil(expectedTotalChunks / batchSize);
 
-        await indexDocsQdrant(docsDir, collectionName);
+        await indexDocsVectra(docsDir, indexPath);
 
-        expect(mockQdrantClientInstance.upsert).toHaveBeenCalledTimes(expectedBatches);
-        expect(mockQdrantClientInstance.pointsUpserted.length).toBe(expectedTotalChunks);
+        expect(mockLocalIndexInstance.insertItem).toHaveBeenCalledTimes(expectedTotalChunks);
+        expect(mockLocalIndexInstance.itemsInserted.length).toBe(expectedTotalChunks);
 
         for (let i = 1; i <= expectedBatches; i++) {
             expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Processing batch ${i} of ${expectedBatches}`));
         }
-        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Total chunks upserted to Qdrant: ${expectedTotalChunks}`));
+        expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Total chunks added to Vectra index: ${expectedTotalChunks}`));
     });
-}); 
+
+    it('should handle chunks with different types (text and code)', async () => {
+        const docsDir = './test-docs';
+        await indexDocsVectra(docsDir, './type-test-index');
+
+        expect(mockLocalIndexInstance.itemsInserted.length).toBeGreaterThan(0);
+        
+        // Check that we have both text and code chunks
+        const textChunks = mockLocalIndexInstance.itemsInserted.filter(item => item.metadata.type === 'text');
+        const codeChunks = mockLocalIndexInstance.itemsInserted.filter(item => item.metadata.type === 'code');
+        
+        expect(textChunks.length).toBeGreaterThan(0);
+        expect(codeChunks.length).toBeGreaterThan(0);
+        
+        // Verify code chunk contains expected content
+        const jsCodeChunk = codeChunks.find(item => item.metadata.content.includes('console.log("hello")'));
+        expect(jsCodeChunk).toBeDefined();
+        expect(jsCodeChunk.metadata.type).toBe('code');
+    });
+});
