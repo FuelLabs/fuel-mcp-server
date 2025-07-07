@@ -2,10 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { InMemoryEventStore } from '@modelcontextprotocol/sdk/examples/shared/inMemoryEventStore.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
-import { createFuelMCPServer, type ServerOptions } from "../server.js";
+import { createFuelMCPServer } from "../server.js";
 import { log } from "../query.js";
 
-export interface HttpServerOptions extends ServerOptions {
+export interface HttpServerOptions {
     port?: number;
 }
 
@@ -14,7 +14,7 @@ export async function startHttpServer(options: HttpServerOptions = {}): Promise<
     
     try {
         log("Creating Fuel MCP server instance...");
-        const server = createFuelMCPServer(options);
+        const server = createFuelMCPServer();
         
         const app = express();
         
