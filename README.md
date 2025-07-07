@@ -28,6 +28,27 @@ bun run src/indexer.ts ./docs
 bun run src/query.ts --run "What is FuelVM?"
 ```
 
+## Usage
+
+### STDIO Transport (Default)
+```bash
+npm run start:stdio --repo /path/to/repo
+```
+
+### HTTP Transport
+```bash
+npm run start:http --port 3500
+# Server runs at http://127.0.0.1:3500/mcp
+# Health check: http://127.0.0.1:3500/health
+```
+
+### CLI Options
+```bash
+bun run src/cli.ts --help
+bun run src/cli.ts --transport http --port 3500
+bun run src/cli.ts --transport stdio --repo /path/to/repo
+```
+
 ## Claude/Cursor Integration
 
 Add to your MCP config file:
@@ -36,7 +57,7 @@ Add to your MCP config file:
   "mcpServers": {
     "fuel-server": {
       "command": "bun",
-      "args": ["run", "/absolute/path/to/fuel-mcp-server/src/mcp-server.ts"]
+      "args": ["run", "/absolute/path/to/fuel-mcp-server/src/cli.ts"]
     }
   }
 }
@@ -48,10 +69,14 @@ Add to your MCP config file:
 .
 ├── docs/                     # Markdown documentation files
 ├── src/
+│   ├── cli.ts                # Main CLI entry point
+│   ├── server.ts             # Shared server factory
+│   ├── transports/
+│   │   ├── stdio.ts          # STDIO transport
+│   │   └── http.ts           # HTTP transport
 │   ├── chunker.ts            # Markdown chunking logic
 │   ├── indexer.ts            # Document indexing script
 │   ├── query.ts              # Search query script
-│   ├── mcp-server.ts         # MCP server implementation
 │   └── *.test.ts             # Test files
 ├── vectra_index/             # Local vector database (created after indexing)
 ├── package.json
