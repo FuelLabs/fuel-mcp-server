@@ -26,6 +26,32 @@ bun run src/indexer.ts ./docs
 
 # Test search
 bun run src/query.ts --run "What is FuelVM?"
+
+# Start MCP server
+bun run src/cli.ts
+```
+
+## Usage
+
+### STDIO Transport (Default)
+```bash
+bun run src/cli.ts
+# or explicitly
+bun run src/cli.ts --transport stdio
+```
+
+### HTTP Transport
+```bash
+bun run src/cli.ts --transport http --port 3500
+# Server runs at http://127.0.0.1:3500/mcp
+# Health check: http://127.0.0.1:3500/health
+```
+
+### CLI Options
+```bash
+bun run src/cli.ts --help
+bun run src/cli.ts --transport http --port 3500
+bun run src/cli.ts --transport stdio
 ```
 
 ## Claude/Cursor Integration
@@ -36,7 +62,7 @@ Add to your MCP config file:
   "mcpServers": {
     "fuel-server": {
       "command": "bun",
-      "args": ["run", "/absolute/path/to/fuel-mcp-server/src/mcp-server.ts"]
+      "args": ["run", "/absolute/path/to/fuel-mcp-server/src/cli.ts", "--transport", "stdio"]
     }
   }
 }
@@ -48,10 +74,14 @@ Add to your MCP config file:
 .
 ├── docs/                     # Markdown documentation files
 ├── src/
+│   ├── cli.ts                # Main CLI entry point
+│   ├── server.ts             # MCP server factory
+│   ├── transports/
+│   │   ├── stdio.ts          # STDIO transport
+│   │   └── http.ts           # HTTP transport
 │   ├── chunker.ts            # Markdown chunking logic
 │   ├── indexer.ts            # Document indexing script
 │   ├── query.ts              # Search query script
-│   ├── mcp-server.ts         # MCP server implementation
 │   └── *.test.ts             # Test files
 ├── vectra_index/             # Local vector database (created after indexing)
 ├── package.json
@@ -92,11 +122,11 @@ NUM_RESULTS=10 bun run src/query.ts --run "smart contracts"
 ### 3. Run MCP Server
 
 ```bash
-# Start MCP server (for IDE integration)
-bun run src/mcp-server.ts
+# Start MCP server (stdio-mode)
+bun run src/cli.ts
 
-# With custom index path
-VECTRA_INDEX_PATH=./my_index bun run src/mcp-server.ts
+# With HTTP transport
+bun run src/cli.ts --transport http --port 3500
 ```
 
 ### 4. Run Tests
@@ -150,6 +180,9 @@ bun run src/indexer.ts ./docs
 # Test search functionality
 bun run src/query.ts --run "test query"
 
-# Start MCP server for development
-bun run src/mcp-server.ts
+# Start MCP server for development (STDIO)
+bun run src/cli.ts
+
+# Start MCP server for development (HTTP)
+bun run src/cli.ts --transport http --port 3500
 ```
