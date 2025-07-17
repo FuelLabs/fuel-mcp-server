@@ -51,9 +51,18 @@ jobs:
           image: ghcr.io/fuellabs/fuel-mcp-server
           dockerfile: deployment/Dockerfile
           context: .
+      
+      - name: Check if indexer image exists
+        id: check-indexer
+        run: |
+          if docker manifest inspect ghcr.io/fuellabs/fuel-mcp-server-indexer:latest >/dev/null 2>&1; then
+            echo "indexer-exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "indexer-exists=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build and push indexer image
-        if: steps.check-docs.outputs.docs-changed == 'true'
+        if: steps.check-docs.outputs.docs-changed == 'true' || steps.check-indexer.outputs.indexer-exists == 'false'
         uses: ./.github/actions/docker-publish
         id: publish-indexer
         with:
