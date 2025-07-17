@@ -27,5 +27,3 @@ jobs:
           bun-version: latest
       - run: bun install
       - run: bun test
-      - run: bun run lint || true
-      - run: bun run typecheck || true
