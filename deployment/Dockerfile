@@ -17,7 +17,7 @@ WORKDIR /app
 
 COPY package.json ./
 RUN bun install --no-cache
-RUN npm install --platform=linux --arch=arm64 sharp
+RUN npm install sharp
 RUN npm rebuild sharp
 
 COPY src/ ./src/
