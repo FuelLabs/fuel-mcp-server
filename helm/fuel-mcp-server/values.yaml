@@ -132,5 +132,5 @@ volumeMounts: []
 
 docs:
   repository: "https://github.com/FuelLabs/docs.git"
-  branch: "main"
+  branch: "master"
   path: "docs"
