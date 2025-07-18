@@ -12,7 +12,7 @@ image:
 
 indexer:
   image:
-    repository: ghcr.io/fuellabs/fuel-mcp-server-indexer
+    repository: ghcr.io/fuellabs/fuel-mcp-server-indexer-cache
     pullPolicy: Always
     # Overrides the image tag whose default is the chart appVersion.
     tag: ""
