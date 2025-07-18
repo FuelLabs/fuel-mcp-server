@@ -120,3 +120,8 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+docs:
+  repository: "https://github.com/FuelLabs/docs.git"
+  branch: "main"
+  path: "docs"

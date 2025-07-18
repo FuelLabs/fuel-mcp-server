@@ -33,6 +33,17 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
+        - name: {{ .Chart.Name }}-docs-fetcher
+          image: alpine/git:latest
+          command:
+            - "/bin/sh"
+            - "/scripts/fetch-docs.sh"
+          volumeMounts:
+            - name: docs-volume
+              mountPath: /app/docs
+            - name: docs-script
+              mountPath: /scripts
+              readOnly: true
         - name: {{ .Chart.Name }}-indexer
           {{- with .Values.securityContext }}
           securityContext:
@@ -110,8 +121,11 @@ spec:
           persistentVolumeClaim:
             claimName: {{ include "fuel-mcp-server.fullname" . }}-vectra-index
         - name: docs-volume
+          emptyDir: {}
+        - name: docs-script
           configMap:
             name: {{ include "fuel-mcp-server.fullname" . }}-docs
+            defaultMode: 0755
         {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
