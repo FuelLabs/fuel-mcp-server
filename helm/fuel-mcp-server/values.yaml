@@ -12,7 +12,7 @@ image:
 
 indexer:
   image:
-    repository: ghcr.io/fuellabs/fuel-mcp-server-indexer
+    repository: ghcr.io/fuellabs/fuel-mcp-server-indexer-cache
     pullPolicy: Always
     # Overrides the image tag whose default is the chart appVersion.
     tag: ""
@@ -131,6 +131,6 @@ volumes: []
 volumeMounts: []
 
 docs:
-  repository: "https://github.com/FuelLabs/docs.git"
-  branch: "master"
+  repository: "https://github.com/FuelLabs/fuel-mcp-server.git"
+  branch: "main"
   path: "docs"
