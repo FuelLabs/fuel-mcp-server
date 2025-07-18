@@ -131,6 +131,6 @@ volumes: []
 volumeMounts: []
 
 docs:
-  repository: "https://github.com/FuelLabs/docs.git"
+  repository: "https://github.com/FuelLabs/fuel-mcp-server.git"
   branch: "main"
   path: "docs"
