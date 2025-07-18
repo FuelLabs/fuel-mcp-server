@@ -93,7 +93,7 @@ initContainer:
 persistence:
   enabled: true
   size: 1Gi
-  storageClass: ""
+  storageClass: "gp3-generic"
   # Optional: selector for specific PVs
   selector: {}
   # Optional: annotations for the PVC
