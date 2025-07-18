@@ -10,7 +10,7 @@ data:
     set -e
     
     DOCS_REPO="{{ .Values.docs.repository | default "https://github.com/FuelLabs/docs.git" }}"
-    DOCS_BRANCH="{{ .Values.docs.branch | default "main" }}"
+    DOCS_BRANCH="{{ .Values.docs.branch | default "master" }}"
     DOCS_PATH="{{ .Values.docs.path | default "docs" }}"
     TARGET_DIR="/app/docs"
     
