@@ -18,7 +18,7 @@ permissions:
 jobs:
   helm-release:
     name: Build Helm Chart
-    runs-on: ubuntu-latest-4-cores
+    runs-on: ubuntu-latest
     if: |
       (github.event_name == 'release' && github.event.action == 'published') ||
       github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
