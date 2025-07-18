@@ -6,6 +6,11 @@ on:
       - main
     paths:
       - 'helm/fuel-mcp-server/Chart.yaml'
+  pull_request:
+    paths:
+      - 'helm/fuel-mcp-server/Chart.yaml'
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -23,7 +28,7 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Package and Push Charts
         uses: bsord/helm-push@v4.1.0
