@@ -28,25 +28,6 @@ export async function startHttpServer(
       return requiredTypes.every((type) => acceptHeader.includes(type));
     }
 
-    function validateOriginHeader(req: express.Request): boolean {
-      const origin = req.headers.origin;
-      if (!origin) return true;
-      const allowedOrigins = ["http://localhost", "http://127.0.0.1"];
-
-      return allowedOrigins.some((allowed) => origin.startsWith(allowed));
-    }
-
-    app.use((req, res, next) => {
-      if (!validateOriginHeader(req)) {
-        return res.status(403).json({
-          jsonrpc: "2.0",
-          error: { code: -32000, message: "Forbidden: Invalid origin" },
-          id: null,
-        });
-      }
-      next();
-    });
-
     app.use((req, res, next) => {
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader(
@@ -145,9 +126,36 @@ export async function startHttpServer(
 
     const jsonParser = express.json();
     app.get("/health", jsonParser, (_, res) => {
+      const indexPath = "./vectra_index";
+      const fs = require("fs");
+      
+      let indexStatus = "unknown";
+      let indexReady = false;
+      
+      try {
+        if (fs.existsSync(indexPath) && fs.existsSync(`${indexPath}/index.json`)) {
+          const indexFile = fs.readFileSync(`${indexPath}/index.json`, 'utf8');
+          if (indexFile.length > 0) {
+            indexStatus = "ready";
+            indexReady = true;
+          } else {
+            indexStatus = "empty";
+          }
+        } else {
+          indexStatus = "missing";
+        }
+      } catch (error) {
+        indexStatus = "error";
+      }
+      
       res.json({
-        status: "ok",
+        status: indexReady ? "ok" : "degraded",
         timestamp: new Date().toISOString(),
+        index: {
+          status: indexStatus,
+          ready: indexReady,
+          path: indexPath
+        }
       });
     });
 

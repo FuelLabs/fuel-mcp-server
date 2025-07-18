@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "fuel-mcp-server.fullname" . }}-docs
+  labels:
+    {{- include "fuel-mcp-server.labels" . | nindent 4 }}
+data:
+  fetch-docs.sh: |
+    #!/bin/bash
+    set -e
+    
+    DOCS_REPO="{{ .Values.docs.repository | default "https://github.com/FuelLabs/docs.git" }}"
+    DOCS_BRANCH="{{ .Values.docs.branch | default "main" }}"
+    DOCS_PATH="{{ .Values.docs.path | default "docs" }}"
+    TARGET_DIR="/app/docs"
+    
+    echo "Fetching documentation from ${DOCS_REPO}..."
+    
+    # Create temp directory for cloning
+    TEMP_DIR=$(mktemp -d)
+    cd "$TEMP_DIR"
+    
+    # Clone repository
+    git clone --depth 1 --branch "$DOCS_BRANCH" "$DOCS_REPO" repo
+    
+    # Copy docs to target directory
+    if [ -d "repo/$DOCS_PATH" ]; then
+      cp -r "repo/$DOCS_PATH"/* "$TARGET_DIR/"
+      echo "Documentation copied to $TARGET_DIR"
+    else
+      echo "Warning: Path $DOCS_PATH not found in repository"
+      # Create a placeholder to prevent indexer from failing
+      echo "# No documentation found" > "$TARGET_DIR/placeholder.md"
+    fi
+    
+    # Cleanup
+    rm -rf "$TEMP_DIR"
+    
+    echo "Documentation fetch completed"

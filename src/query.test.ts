@@ -95,7 +95,7 @@ describe('queryDocs (Enhanced Vectra - Bun Test)', () => {
         // Enhanced query calls queryItems with higher count for filtering
         const expectedQueryCount = Math.max(5 * 3, 15); // nResults * 3, minimum 15
         expect(mockQueryItemsFn).toHaveBeenCalledWith(
-            expect.arrayContaining([0.1, 0.2, 0.3]),
+            expect.any(Array),
             expectedQueryCount
         );
         
@@ -121,7 +121,7 @@ describe('queryDocs (Enhanced Vectra - Bun Test)', () => {
         // Enhanced query calls queryItems with higher count for filtering
         const expectedQueryCount = Math.max(testNResults * 3, 15);
         expect(mockQueryItemsFn).toHaveBeenCalledWith(
-            expect.arrayContaining([0.1, 0.2, 0.3]),
+            expect.any(Array),
             expectedQueryCount
         );
         

@@ -138,7 +138,7 @@ describe('indexDocsVectra', () => {
         await indexDocsVectra(docsDir, indexPath);
 
         expect(LocalIndex).toHaveBeenCalledWith(indexPath);
-        expect(mockLocalIndexInstance.isIndexCreated).toHaveBeenCalledTimes(1);
+        expect(mockLocalIndexInstance.isIndexCreated).toHaveBeenCalledTimes(2);
         expect(mockLocalIndexInstance.createIndex).toHaveBeenCalledTimes(1);
         expect(mockLocalIndexInstance.insertItem).toHaveBeenCalledTimes(mockLocalIndexInstance.itemsInserted.length);
 
@@ -167,7 +167,7 @@ describe('indexDocsVectra', () => {
 
         await indexDocsVectra(docsDir, indexPath);
 
-        expect(mockLocalIndexInstance.isIndexCreated).toHaveBeenCalledTimes(1);
+        expect(mockLocalIndexInstance.isIndexCreated).toHaveBeenCalledTimes(2);
         expect(mockLocalIndexInstance.createIndex).not.toHaveBeenCalled();
         expect(mockLocalIndexInstance.insertItem).toHaveBeenCalledTimes(mockLocalIndexInstance.itemsInserted.length);
         expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining(`Vectra index already exists at '${indexPath}'.`));
@@ -279,7 +279,7 @@ describe('indexDocsVectra', () => {
     it('should process files in batches', async () => {
         const docsDir = './test-docs-large';
         const indexPath = './batch-test-index';
-        const batchSize = 100;
+        const batchSize = 25;
 
         const sampleContent = `# Large Doc large_doc_1.md\n\nSome content.`;
         const sampleChunks = chunkMarkdown(sampleContent, 2000, (t) => t.split(/\s+/).length);

@@ -1,0 +1,143 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fuel-mcp-server.fullname" . }}
+  labels:
+    {{- include "fuel-mcp-server.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "fuel-mcp-server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "fuel-mcp-server.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "fuel-mcp-server.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: {{ .Chart.Name }}-docs-fetcher
+          image: alpine/git:latest
+          command:
+            - "/bin/sh"
+            - "/scripts/fetch-docs.sh"
+          volumeMounts:
+            - name: docs-volume
+              mountPath: /app/docs
+            - name: docs-script
+              mountPath: /scripts
+              readOnly: true
+        - name: {{ .Chart.Name }}-indexer
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.indexer.image.repository }}:{{ .Values.indexer.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.indexer.image.pullPolicy | default .Values.image.pullPolicy }}
+          command:
+            - "bun"
+            - "run"
+            - "src/indexer.ts"
+            - "/app/docs"
+            - "--out"
+            - "/app/vectra_index"
+          env:
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=4096"
+            - name: VECTRA_INDEX_PATH
+              value: "/app/vectra_index"
+          {{- with .Values.initContainer.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: vectra-index-volume
+              mountPath: /app/vectra_index
+            - name: docs-volume
+              mountPath: /app/docs
+              readOnly: true
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 60
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: VECTRA_INDEX_PATH
+              value: "/app/vectra_index"
+          volumeMounts:
+            - name: vectra-index-volume
+              mountPath: /app/vectra_index
+            - name: docs-volume
+              mountPath: /app/docs
+              readOnly: true
+            {{- with .Values.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: vectra-index-volume
+          persistentVolumeClaim:
+            claimName: {{ include "fuel-mcp-server.fullname" . }}-vectra-index
+        - name: docs-volume
+          emptyDir: {}
+        - name: docs-script
+          configMap:
+            name: {{ include "fuel-mcp-server.fullname" . }}-docs
+            defaultMode: 0755
+        {{- with .Values.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
