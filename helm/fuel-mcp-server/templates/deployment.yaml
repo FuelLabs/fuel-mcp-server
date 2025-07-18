@@ -112,7 +112,6 @@ spec:
         - name: docs-volume
           configMap:
             name: {{ include "fuel-mcp-server.fullname" . }}-docs
-            optional: true
         {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

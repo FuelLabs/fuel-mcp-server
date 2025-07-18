@@ -24,6 +24,8 @@ fullnameOverride: ""
 serviceAccount:
   # Specifies whether a service account should be created
   create: true
+  # Automatically mount a ServiceAccount's API credentials?
+  automount: true
   # Annotations to add to the service account
   annotations: {}
   # The name of the service account to use.
@@ -94,6 +96,11 @@ persistence:
   selector: {}
   # Optional: annotations for the PVC
   annotations: {}
+
+# Storage configuration for the vector index
+storage:
+  # Storage class for the persistent volume
+  storageClass: ""
 
 
 # This section is for setting up autoscaling more information can be found here: https://kubernetes.io/docs/concepts/workloads/autoscaling/

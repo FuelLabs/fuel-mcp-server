@@ -9,9 +9,11 @@ metadata:
     helm.sh/resource-policy: keep
 spec:
   accessModes:
-    - ReadWriteMany
+    - ReadWriteOnce
   {{- if .Values.persistence.storageClass }}
   storageClassName: {{ .Values.persistence.storageClass }}
+  {{- else if .Values.storage.storageClass }}
+  storageClassName: {{ .Values.storage.storageClass }}
   {{- end }}
   resources:
     requests:
