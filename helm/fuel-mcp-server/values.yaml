@@ -8,14 +8,14 @@ image:
   repository: ghcr.io/fuellabs/fuel-mcp-server
   pullPolicy: Always
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "0608f1f"
+  tag: "5853acf"
 
 indexer:
   image:
     repository: ghcr.io/fuellabs/fuel-mcp-server-indexer
     pullPolicy: Always
     # Overrides the image tag whose default is the chart appVersion.
-    tag: "0608f1f"
+    tag: "5853acf"
 
 imagePullSecrets: []
 nameOverride: ""
