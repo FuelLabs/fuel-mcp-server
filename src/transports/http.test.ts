@@ -178,7 +178,7 @@ describe("HTTP Transport Mode", () => {
 
     expect(mockApp.listen).toHaveBeenCalledWith(
       3500,
-      "127.0.0.1",
+      "0.0.0.0",
       expect.any(Function)
     );
     expect(mockMCPServer.connect).toHaveBeenCalled();
@@ -245,7 +245,7 @@ describe("HTTP Transport Mode", () => {
 
     expect(mockApp.listen).toHaveBeenCalledWith(
       3501,
-      "127.0.0.1",
+      "0.0.0.0",
       expect.any(Function)
     );
 
