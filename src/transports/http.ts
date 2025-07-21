@@ -167,9 +167,9 @@ export async function startHttpServer(
       });
     });
 
-    const httpServer = app.listen(port, "127.0.0.1", () => {
-      console.log(`Fuel MCP Server running at http://127.0.0.1:${port}/mcp`);
-      console.log(`Health check: http://127.0.0.1:${port}/health`);
+    const httpServer = app.listen(port, "0.0.0.0", () => {
+      console.log(`Fuel MCP Server running at http://0.0.0.0:${port}/mcp`);
+      console.log(`Health check: http://0.0.0.0:${port}/health`);
     });
 
     process.on("SIGINT", async () => {
