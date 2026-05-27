@@ -52,10 +52,17 @@ jobs:
     outputs:
       indexer-exists: ${{ steps.check-indexer.outputs.indexer-exists }}
     steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Check if indexer image exists
         id: check-indexer
         run: |
-          if docker manifest inspect ghcr.io/fuellabs/fuel-mcp-server-indexer:latest >/dev/null 2>&1; then
+          if docker manifest inspect ghcr.io/fuellabs/fuel-mcp-server-indexer:latest; then
             echo "indexer-exists=true" >> $GITHUB_OUTPUT
           else
             echo "indexer-exists=false" >> $GITHUB_OUTPUT
