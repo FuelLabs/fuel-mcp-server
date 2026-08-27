@@ -13,21 +13,21 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
 jobs:
-  build-and-publish-image:
+  check-docs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'release' && github.event.action == 'published') ||
       github.ref == 'refs/heads/main' ||
       (github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository)
-    permissions:
-      contents: read
-      packages: write
-
     outputs:
       docs-changed: ${{ steps.check-docs.outputs.docs-changed }}
-
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,32 +42,89 @@ jobs:
             echo "docs-changed=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build and push app image
-        uses: ./.github/actions/docker-publish
-        id: publish-app
+  check-indexer:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'release' && github.event.action == 'published') ||
+      github.ref == 'refs/heads/main' ||
+      (github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository)
+    outputs:
+      indexer-exists: ${{ steps.check-indexer.outputs.indexer-exists }}
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
+          registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-          image: ghcr.io/fuellabs/fuel-mcp-server
-          dockerfile: deployment/Dockerfile
-          context: .
-      
+
       - name: Check if indexer image exists
         id: check-indexer
         run: |
-          if docker manifest inspect ghcr.io/fuellabs/fuel-mcp-server-indexer:latest >/dev/null 2>&1; then
+          if docker manifest inspect ghcr.io/fuellabs/fuel-mcp-server-indexer:latest; then
             echo "indexer-exists=true" >> $GITHUB_OUTPUT
           else
             echo "indexer-exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build and push indexer image
-        if: steps.check-docs.outputs.docs-changed == 'true' || steps.check-indexer.outputs.indexer-exists == 'false'
-        uses: ./.github/actions/docker-publish
-        id: publish-indexer
-        with:
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-          image: ghcr.io/fuellabs/fuel-mcp-server-indexer
-          dockerfile: deployment/Dockerfile.indexer
-          context: .
+  build-and-publish-app:
+    uses: FuelLabs/github-actions/.github/workflows/docker-build-push.yml@master
+    if: |
+      (github.event_name == 'release' && github.event.action == 'published') ||
+      github.ref == 'refs/heads/main' ||
+      (github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository)
+    secrets:
+      REGISTRY_USERNAME: ${{ github.repository_owner }}
+      REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+    with:
+      auth-mode: registry-login
+      registry: ghcr.io
+      build-backend: native
+      platforms: linux/amd64,linux/arm64
+      runs-on-amd64: ubuntu-latest
+      runs-on-arm64: ubuntu-24.04-arm
+      digest-artifact-key: app
+      dockerfile: deployment/Dockerfile
+      docker-context: .
+      image: ghcr.io/fuellabs/fuel-mcp-server
+      tags: |
+        type=ref,event=branch
+        type=sha,prefix=
+        type=semver,pattern={{raw}}
+
+  build-and-publish-indexer:
+    needs:
+      - check-docs
+      - check-indexer
+    if: |
+      (
+        (github.event_name == 'release' && github.event.action == 'published') ||
+        github.ref == 'refs/heads/main' ||
+        (github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository)
+      ) &&
+      (
+        needs.check-docs.outputs.docs-changed == 'true' ||
+        needs.check-indexer.outputs.indexer-exists == 'false'
+      )
+    uses: FuelLabs/github-actions/.github/workflows/docker-build-push.yml@master
+    secrets:
+      REGISTRY_USERNAME: ${{ github.repository_owner }}
+      REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+    with:
+      auth-mode: registry-login
+      registry: ghcr.io
+      build-backend: native
+      platforms: linux/amd64,linux/arm64
+      runs-on-amd64: ubuntu-latest
+      runs-on-arm64: ubuntu-24.04-arm
+      digest-artifact-key: indexer
+      dockerfile: deployment/Dockerfile.indexer
+      docker-context: .
+      image: ghcr.io/fuellabs/fuel-mcp-server-indexer
+      tags: |
+        type=ref,event=branch
+        type=sha,prefix=
+        type=semver,pattern={{raw}}
